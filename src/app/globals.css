@@ -1,0 +1,156 @@
+/*
+  Design tokens transcribed from IBM Carbon Design System, Gray 100 (dark) theme.
+  Values follow the Carbon v11 token names so the mapping stays legible.
+  Reference: https://carbondesignsystem.com/elements/color/tokens
+*/
+
+:root {
+  /* Layering */
+  --cds-background: #161616;
+  --cds-layer-01: #262626;
+  --cds-layer-02: #393939;
+  --cds-layer-03: #525252;
+  --cds-layer-hover-01: #333333;
+  --cds-layer-hover-02: #474747;
+  --cds-layer-selected-01: #393939;
+  --cds-field-01: #262626;
+  --cds-field-02: #393939;
+
+  /* Borders */
+  --cds-border-subtle-00: #393939;
+  --cds-border-subtle-01: #393939;
+  --cds-border-subtle-02: #525252;
+  --cds-border-strong-01: #6f6f6f;
+  --cds-border-inverse: #f4f4f4;
+
+  /* Text */
+  --cds-text-primary: #f4f4f4;
+  --cds-text-secondary: #c6c6c6;
+  --cds-text-placeholder: #6f6f6f;
+  --cds-text-helper: #8d8d8d;
+  --cds-text-on-color: #ffffff;
+  --cds-text-disabled: #525252;
+  --cds-text-inverse: #161616;
+
+  /* Interactive */
+  --cds-interactive: #4589ff;
+  --cds-link-primary: #78a9ff;
+  --cds-link-primary-hover: #a6c8ff;
+  --cds-focus: #ffffff;
+
+  /* Buttons */
+  --cds-button-primary: #0f62fe;
+  --cds-button-primary-hover: #0353e9;
+  --cds-button-secondary: #6f6f6f;
+  --cds-button-secondary-hover: #606060;
+  --cds-button-danger: #da1e28;
+  --cds-button-danger-hover: #b81921;
+  --cds-button-tertiary: #ffffff;
+
+  /* Support */
+  --cds-support-error: #fa4d56;
+  --cds-support-success: #42be65;
+  --cds-support-warning: #f1c21b;
+  --cds-support-info: #4589ff;
+  --cds-support-caution-minor: #f1c21b;
+
+  /* Notification backgrounds */
+  --cds-notification-error-bg: #262626;
+  --cds-notification-success-bg: #262626;
+
+  /* Spacing scale */
+  --cds-spacing-01: 0.125rem;
+  --cds-spacing-02: 0.25rem;
+  --cds-spacing-03: 0.5rem;
+  --cds-spacing-04: 0.75rem;
+  --cds-spacing-05: 1rem;
+  --cds-spacing-06: 1.5rem;
+  --cds-spacing-07: 2rem;
+  --cds-spacing-08: 2.5rem;
+  --cds-spacing-09: 3rem;
+
+  /* Motion */
+  --cds-duration-fast-02: 110ms;
+  --cds-duration-moderate-01: 150ms;
+  --cds-easing-standard: cubic-bezier(0.2, 0, 0.38, 0.9);
+
+  /* Domain accents used by the floor canvas */
+  --cc-locked: #f1c21b;
+  --cc-proposal: #be95ff;
+  --cc-violation: #fa4d56;
+  --cc-grid: #2a2a2a;
+  --cc-grid-major: #333333;
+  --cc-floor: #1c1c1c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--cds-background);
+  color: var(--cds-text-primary);
+  font-family: var(--font-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Carbon type scale subset */
+.t-label-01 {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.32px;
+}
+.t-body-01 {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  letter-spacing: 0.16px;
+}
+.t-body-compact-01 {
+  font-size: 0.875rem;
+  line-height: 1.125rem;
+  letter-spacing: 0.16px;
+}
+.t-heading-01 {
+  font-size: 0.875rem;
+  line-height: 1.125rem;
+  font-weight: 600;
+  letter-spacing: 0.16px;
+}
+.t-heading-03 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 400;
+}
+.t-mono {
+  font-family: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--cds-focus);
+  outline-offset: -2px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--cds-background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--cds-layer-03);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cds-border-strong-01);
+}
