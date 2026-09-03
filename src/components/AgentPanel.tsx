@@ -73,10 +73,21 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const historyRef = useRef<Content[]>([]);
   // Whichever model answered first stays with this conversation, so thought
   // signatures are never replayed to a model that did not mint them.
   const modelRef = useRef<string | null>(null);
+  /*
+   * Results already served in this conversation, keyed by tool and arguments.
+   *
+   * Models re-read the floor plan and the rulebook between steps out of
+   * caution. The tool call itself is free, but the round trip that follows it
+   * is not, and the free tier allows only twenty a day per model. Replaying
+   * the identical answer with a nudge to get on with it keeps a plan inside
+   * two or three requests instead of six.
+   */
+  const seenRef = useRef<Map<string, string>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
 
@@ -89,6 +100,12 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [bubbles]);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   /** Converts the published tool surface into Gemini function declarations. */
   async function declarations() {
@@ -150,6 +167,7 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
 
         if (data.kind === "error") {
           push("assistant", data.message);
+          if (data.rateLimited) setCooldown(data.retryAfterSeconds ?? 30);
           break;
         }
 
@@ -172,14 +190,25 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
             const name = c.name.includes(":") ? c.name.split(":").pop()! : c.name;
             const args = JSON.stringify(c.args ?? {});
             push("tool", name, args === "{}" ? undefined : args);
+            const cacheKey = `${name}:${args}`;
+            const cached = seenRef.current.get(cacheKey);
             let raw: string;
-            try {
-              raw = await callToolThroughBridge(name, c.args ?? {});
-            } catch (err) {
+            if (cached) {
               raw = JSON.stringify({
-                refused: true,
-                message: err instanceof Error ? err.message : String(err),
+                repeat_call: true,
+                note: `You already called ${name} with these arguments in this conversation. The result is unchanged and repeated below. Act on it rather than reading again.`,
+                result: JSON.parse(cached),
               });
+            } else {
+              try {
+                raw = await callToolThroughBridge(name, c.args ?? {});
+                seenRef.current.set(cacheKey, raw);
+              } catch (err) {
+                raw = JSON.stringify({
+                  refused: true,
+                  message: err instanceof Error ? err.message : String(err),
+                });
+              }
             }
             let parsed: Record<string, unknown>;
             try {
@@ -192,6 +221,16 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
             responseParts.push({
               functionResponse: { name: c.name, response: parsed },
             });
+          }
+
+          // Anything reaching the proposal path changes what the inspection
+          // tools would say, so their cached answers are dropped.
+          if (
+            data.calls.some((c: { name: string }) =>
+              /propose|optimise/.test(c.name)
+            )
+          ) {
+            seenRef.current.clear();
           }
 
           historyRef.current.push({ role: "user", parts: responseParts });
@@ -210,7 +249,7 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
     }
   }
 
-  const disabled = busy || state.bridge.mode === "none";
+  const disabled = busy || cooldown > 0 || state.bridge.mode === "none";
 
   return (
     <section className="dock-pane">
@@ -230,6 +269,7 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
               setBubbles([]);
               historyRef.current = [];
               modelRef.current = null;
+              seenRef.current.clear();
             }}
             disabled={busy}
           >
@@ -302,7 +342,11 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask the agent to plan something"
+          placeholder={
+            cooldown > 0
+              ? `Rate limited. Ready in ${cooldown}s.`
+              : "Ask the agent to plan something"
+          }
           disabled={disabled}
         />
         <button className="btn" type="submit" disabled={disabled || !input.trim()}>

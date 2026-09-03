@@ -32,6 +32,11 @@ How to work:
 - When the human states a standing preference, use propose_rule so it becomes a durable constraint rather than something you have to remember.
 - explain_placement answers any question about why something will not fit.
 
+Spend as few turns as you can. Every round trip costs the human real quota:
+- Read what you need in one go. get_floor_plan with include_catalog true, plus get_rulebook, is enough to plan almost anything.
+- Never call a tool twice with the same arguments. Results you have already received are still in front of you in this conversation. If you catch yourself re-reading, act on what you have instead.
+- get_violations and get_metrics are for questions about the current state, not a warm up before every proposal.
+
 Style: short and concrete. Two or three sentences. Quote exact numbers, rule statements and margins from tool results rather than paraphrasing them. Never invent an object id.`;
 
 interface GeminiPart {
@@ -103,9 +108,20 @@ export async function POST(request: Request) {
    * with nothing to show for it. Once the client knows which model answered,
    * it sends that back and it is the only one tried.
    */
+  /*
+   * Switching model is only safe before the model has produced a thought
+   * signature. Once one exists in the transcript it has to go back to the
+   * model that minted it, so a rate limited conversation waits rather than
+   * hopping. A fresh one is free to try elsewhere.
+   */
+  const hasSignature = (body.contents ?? []).some((c) =>
+    (c.parts ?? []).some((p) => typeof p.thoughtSignature === "string")
+  );
   const pinned = body.model;
   const models = pinned
-    ? [pinned]
+    ? hasSignature
+      ? [pinned]
+      : [pinned, ...MODEL_FALLBACKS.filter((m) => m !== pinned)]
     : process.env.GEMINI_MODEL
       ? [process.env.GEMINI_MODEL, ...MODEL_FALLBACKS]
       : MODEL_FALLBACKS;
@@ -136,10 +152,43 @@ export async function POST(request: Request) {
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
-      const detail =
-        (data as { error?: { message?: string } } | null)?.error?.message ??
-        `HTTP ${response.status}`;
-      // A bad key or a quota problem will not be fixed by trying another model.
+      const errorBody = (
+        data as {
+          error?: {
+            message?: string;
+            details?: Array<{ "@type"?: string; retryDelay?: string }>;
+          };
+        } | null
+      )?.error;
+      const detail = errorBody?.message ?? `HTTP ${response.status}`;
+
+      if (response.status === 429) {
+        const retryInfo = errorBody?.details?.find((d) =>
+          String(d["@type"] ?? "").includes("RetryInfo")
+        );
+        const seconds = Math.ceil(
+          parseFloat(
+            retryInfo?.retryDelay?.replace("s", "") ??
+              detail.match(/retry in ([\d.]+)/i)?.[1] ??
+              "30"
+          )
+        );
+        // Another model may still have quota, but only a conversation with no
+        // signatures yet can be moved. Otherwise the honest answer is to wait.
+        if (!hasSignature && models.indexOf(model) < models.length - 1) {
+          lastError = `${model} is rate limited.`;
+          continue;
+        }
+        return NextResponse.json({
+          kind: "error",
+          rateLimited: true,
+          retryAfterSeconds: seconds,
+          model,
+          message: `The free tier limit for ${model} is used up. It allows 5 requests a minute and 20 a day per model, and one planning request spends several. Wait about ${seconds} seconds, or drive the page from an agent browser instead, which costs no quota at all.`,
+        });
+      }
+
+      // A bad key will not be fixed by trying another model.
       if (response.status === 400 || response.status === 401 || response.status === 403) {
         return NextResponse.json({ kind: "error", message: detail }, { status: 200 });
       }
