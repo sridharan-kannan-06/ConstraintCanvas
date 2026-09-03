@@ -6,7 +6,7 @@ import { deriveCandidates } from "../src/lib/derive";
 import { computeMetrics } from "../src/lib/metrics";
 import { checkPlacement, optimise } from "../src/lib/optimise";
 import { evaluateWorld, probeObject } from "../src/lib/rules";
-import { loadScenario } from "../src/lib/scenario";
+import { loadScenario, makeObject } from "../src/lib/scenario";
 import type { ProposalItem, Rule, WorldState } from "../src/lib/types";
 
 let failures = 0;
@@ -126,6 +126,66 @@ if (zoneCandidate) {
     replan.summary
   );
 }
+
+// Egress path. A table sealed into a corner by two booths has nowhere to walk,
+// even though it is only a few metres from the door in a straight line.
+const sealedFloor = { name: "Test", widthM: 10, heightM: 10, gridM: 0.5, capacity: 100 };
+const sealed = [
+  makeObject("round_table", 0, 0, { label: "Trapped table" }),
+  makeObject("booth", 0, 2.4, { label: "Wall booth A" }),
+  makeObject("booth", 2.4, 0, { label: "Wall booth B", vertical: true }),
+  makeObject("exit", 8, 0, { label: "Far exit" }),
+];
+const sealedViolations = evaluateWorld({
+  floor: sealedFloor,
+  objects: sealed,
+  rules: world.rules,
+}).filter((v) => v.ruleId === "builtin.egress_path");
+check(
+  "a table walled into a corner has no egress path",
+  sealedViolations.length === 1,
+  sealedViolations[0]?.margin ?? "no egress_path violation raised"
+);
+
+// The same table with one wall removed can reach the door again.
+const openViolations = evaluateWorld({
+  floor: sealedFloor,
+  objects: [sealed[0], sealed[1], sealed[3]],
+  rules: world.rules,
+}).filter((v) => v.ruleId === "builtin.egress_path");
+check(
+  "removing one wall restores the egress path",
+  openViolations.length === 0,
+  openViolations.map((v) => v.margin).join(" | ")
+);
+
+// Circulation. Three extra stages push the floor past the clear area minimum.
+const packed = {
+  ...world,
+  objects: [
+    ...world.objects,
+    makeObject("stage", 20, 1, { label: "Pack 1" }),
+    makeObject("stage", 20, 6, { label: "Pack 2" }),
+    makeObject("stage", 20, 11, { label: "Pack 3" }),
+  ],
+};
+const circ = evaluateWorld(packed).filter((v) => v.ruleId === "builtin.circulation");
+check(
+  "packing the floor trips the circulation minimum",
+  circ.length === 1,
+  circ[0]?.margin ?? "no circulation violation raised"
+);
+check(
+  "the shipped scenario is comfortably inside the circulation minimum",
+  evaluateWorld(world).filter((v) => v.ruleId === "builtin.circulation").length === 0
+);
+
+// The optimiser rebuilds the egress grid for every candidate position, so keep
+// an eye on how long a full seat maximisation pass actually takes.
+const started = Date.now();
+optimise(world, "maximise_seating", { targetSeats: 80 });
+const elapsed = Date.now() - started;
+check("a seat maximisation pass finishes quickly", elapsed < 4000, elapsed + " ms");
 
 console.log(failures === 0 ? "\nAll engine checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -140,6 +140,23 @@ Tools are described once in [src/webmcp/tools.ts](src/webmcp/tools.ts) as plain 
 
 There is more detail in [docs/WEBMCP.md](docs/WEBMCP.md).
 
+## The built-in rules
+
+Eight ship with the app and are always evaluated by the same engine as your own rules.
+
+| Rule | What it checks |
+| --- | --- |
+| Bounds | Every object sits entirely inside the floor outline |
+| Overlap | No two objects overlap |
+| Exit clearance | A 2.0 m obstruction free radius around every exit |
+| Clearance | At least 0.9 m between any two pieces of furniture |
+| Egress distance | Every seated guest within 25 m of an exit |
+| Egress path | Every seated guest has an unobstructed walking route to an exit, found by a flood fill outward from the doors rather than a straight line |
+| Circulation | At least 70% of the floor stays clear for aisles |
+| Capacity | Total seating does not exceed the room capacity |
+
+The egress path rule is the one worth knowing about. A table can sit six metres from a door in a straight line and still be walled in behind a row of booths, and only the flood fill catches that.
+
 ## Interface
 
 **Floor canvas.** Grid snapped top down view. Locked objects carry a lock badge and a gold border. Violations pulse red. Agent proposals appear ghosted. Clearance rules are drawn as haloes and zone rules as hatched regions, so a rule you have just ratified becomes visible geometry rather than a line of text.

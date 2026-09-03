@@ -97,7 +97,7 @@ The agent drafts a structured rule. You confirm it. Note that the champagne bar 
 
 Pan the rulebook, now several rules deep, each with its origin.
 
-> "Six built in rules, and everything below them came from me correcting the agent once. None of this lives in the model's memory. It lives in the website. That is the point. Supervision that compounds."
+> "Eight built in rules, and everything below them came from me correcting the agent once. None of this lives in the model's memory. It lives in the website. That is the point. Supervision that compounds."
 
 ## What must be legible on screen
 

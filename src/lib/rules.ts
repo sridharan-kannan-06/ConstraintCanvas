@@ -1,4 +1,5 @@
 import { specFor } from "./catalog";
+import { buildEgressGrid, freeAreaRatio, hasEgressPath } from "./egress";
 import {
   centreDistance,
   fmtM,
@@ -65,6 +66,18 @@ export function builtinRules(): Rule[] {
       "Every seated guest must be within 25 m of an exit.",
       "egress_distance",
       { meters: 25 }
+    ),
+    mk(
+      "builtin.egress_path",
+      "Every seated guest must have an unobstructed walking route to an exit.",
+      "egress_path",
+      {}
+    ),
+    mk(
+      "builtin.circulation",
+      "At least 70% of the floor must stay clear for aisles and circulation.",
+      "circulation",
+      { ratio: 0.7 }
     ),
     mk(
       "builtin.capacity",
@@ -195,6 +208,39 @@ function evalRule(rule: Rule, objects: FloorObject[], floor: Floor): Violation[]
             )} over the ${fmtM(need)} limit`
           );
         }
+      }
+      break;
+    }
+
+    case "egress_path": {
+      const seated = objects.filter((o) => o.seats > 0);
+      if (seated.length === 0) break;
+      if (!objects.some((o) => o.kind === "exit")) {
+        push([], "The floor has seating but no exit at all");
+        break;
+      }
+      const grid = buildEgressGrid(objects, floor);
+      for (const o of seated) {
+        if (!hasEgressPath(o, grid)) {
+          push(
+            [o.id],
+            `${o.label} is boxed in with no walking route to any exit`
+          );
+        }
+      }
+      break;
+    }
+
+    case "circulation": {
+      const need = rule.params.ratio ?? 0.7;
+      const free = freeAreaRatio(objects, floor);
+      if (free < need - 1e-6) {
+        push(
+          [],
+          `${Math.round(free * 100)}% of the floor is clear, ${Math.round(
+            (need - free) * 100
+          )} points below the ${Math.round(need * 100)}% minimum`
+        );
       }
       break;
     }

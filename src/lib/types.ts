@@ -39,6 +39,8 @@ export type RuleKind =
   | "min_clearance"
   | "exit_clearance"
   | "egress_distance"
+  | "egress_path"
+  | "circulation"
   | "capacity"
   | "keep_out_zone"
   | "keep_clear_of"
@@ -68,6 +70,8 @@ export interface RuleParams {
   zoneName?: string;
   /** Occupancy ceiling, used by the capacity rule. */
   limit?: number;
+  /** Minimum share of the floor that must stay clear, 0 to 1. */
+  ratio?: number;
 }
 
 export interface RuleProvenance {
