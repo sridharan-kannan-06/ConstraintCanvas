@@ -41,3 +41,19 @@ export function IconSend() {
     </svg>
   );
 }
+
+export function IconExpand() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M2 2h5v1.5H3.5V7H2Zm7 0h5v5h-1.5V3.5H9Zm3.5 7H14v5H9v-1.5h3.5ZM2 9h1.5v3.5H7V14H2Z" />
+    </svg>
+  );
+}
+
+export function IconCollapse() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M6 2h1.5v3.5H4V4h2Zm2.5 0H10v2h2v1.5H8.5ZM4 10.5h3.5V14H6v-2H4Zm4.5 0H12V12h-2v2H8.5Z" />
+    </svg>
+  );
+}

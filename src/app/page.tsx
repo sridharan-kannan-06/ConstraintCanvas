@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ActivityLog from "@/components/ActivityLog";
 import AgentPanel from "@/components/AgentPanel";
 import FloorCanvas from "@/components/FloorCanvas";
@@ -38,6 +38,25 @@ const BRIDGE_COPY: Record<string, { label: string; title: string }> = {
 export default function Home() {
   const state = useAppState();
   const [armed, setArmed] = useState<ObjectKind | null>(null);
+  // Dock height in pixels. Draggable, and the expand control snaps between a
+  // reading height and the working height so the canvas is never lost entirely.
+  const [dockHeight, setDockHeight] = useState(260);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+  const expanded = dockHeight > 460;
+
+  const onSplitterDown = (e: React.PointerEvent) => {
+    dragRef.current = { startY: e.clientY, startH: dockHeight };
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  };
+  const onSplitterMove = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const next = drag.startH + (drag.startY - e.clientY);
+    setDockHeight(Math.max(140, Math.min(window.innerHeight - 220, next)));
+  };
+  const endSplitter = () => {
+    dragRef.current = null;
+  };
 
   useEffect(() => {
     void connectBridge();
@@ -126,9 +145,27 @@ export default function Home() {
 
         <main className="centre">
           <FloorCanvas armed={armed} onPlaced={() => setArmed(null)} />
-          <div className="dock">
+          <div
+            className="splitter"
+            onPointerDown={onSplitterDown}
+            onPointerMove={onSplitterMove}
+            onPointerUp={endSplitter}
+            onPointerCancel={endSplitter}
+            role="separator"
+            aria-label="Resize the panel below the canvas"
+          >
+            <span className="splitter-grip" />
+          </div>
+          <div className="dock" style={{ flexBasis: dockHeight }}>
             <ActivityLog />
-            <AgentPanel />
+            <AgentPanel
+              expanded={expanded}
+              onToggleExpand={() =>
+                setDockHeight(
+                  expanded ? 260 : Math.round(window.innerHeight * 0.55)
+                )
+              }
+            />
           </div>
         </main>
 

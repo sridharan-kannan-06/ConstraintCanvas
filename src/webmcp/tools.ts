@@ -36,11 +36,72 @@ function ok(payload: unknown) {
   return payload;
 }
 
-function refuse(message: string, extra: Record<string, unknown> = {}) {
-  return { refused: true, message, ...extra };
+/**
+ * Every refusal has to leave the agent somewhere to go.
+ *
+ * A message on its own is a dead end. An agent that is told only "Unknown
+ * objective" has no way to discover what a known one looks like, and will
+ * burn its remaining turns guessing at argument shapes. So next_step is a
+ * required argument here rather than an optional extra, and refusals that
+ * reject a value are expected to name the values that would be accepted.
+ */
+function refuse(
+  message: string,
+  reason: string,
+  nextStep: string,
+  extra: Record<string, unknown> = {}
+) {
+  return {
+    refused: true,
+    reason,
+    message,
+    next_step: nextStep,
+    ...extra,
+  };
 }
 
 const KIND_ENUM = KIND_ORDER;
+
+const OBJECTIVES: Objective[] = [
+  "maximise_seating",
+  "widen_circulation",
+  "improve_sightlines",
+];
+
+/**
+ * Resolves the objective argument, accepting the enum but also the plain
+ * language an agent tends to pass when it is relaying a human request
+ * verbatim. Anything inferred is reported back so the interpretation is
+ * visible rather than silent.
+ */
+function resolveObjective(raw: unknown): {
+  objective: Objective | null;
+  inferredFrom: string | null;
+} {
+  const text = String(raw ?? "").trim();
+  const lower = text.toLowerCase();
+  if ((OBJECTIVES as string[]).includes(lower)) {
+    return { objective: lower as Objective, inferredFrom: null };
+  }
+  if (!lower) return { objective: null, inferredFrom: null };
+
+  if (/seat|capacity|guest|cover|more people|fit .*more|pack/.test(lower)) {
+    return { objective: "maximise_seating", inferredFrom: text };
+  }
+  if (/circulat|aisle|spread|space out|wider|room to move|breathing/.test(lower)) {
+    return { objective: "widen_circulation", inferredFrom: text };
+  }
+  if (/sightline|sight line|view|visib|see the stage|closer to the stage/.test(lower)) {
+    return { objective: "improve_sightlines", inferredFrom: text };
+  }
+  return { objective: null, inferredFrom: null };
+}
+
+/** Pulls a seat target out of free text such as "add 40 seats". */
+function seatsFromText(raw: unknown): number | null {
+  const match = String(raw ?? "").match(/(\d+)\s*(?:more\s*)?(?:seat|guest|cover)/i);
+  return match ? parseInt(match[1], 10) : null;
+}
 
 function asKind(value: unknown): ObjectKind | null {
   return typeof value === "string" && (KIND_ORDER as string[]).includes(value)
@@ -282,21 +343,23 @@ function outcomeToResult(
       ...extra,
     });
   }
-  return refuse(outcome.message, {
-    reason: outcome.reason,
-    broken_rule: outcome.rule,
-    offending_item: outcome.offendingItem?.description,
-    margin: outcome.margin,
-    next_step:
-      outcome.reason === "RULE_VIOLATION"
-        ? "Read get_rulebook, adjust the offending placement, and submit again. The rule will not be relaxed for you."
-        : outcome.reason === "LOCKED_OBJECT"
-          ? "The human locked that object deliberately. Plan around it."
-          : outcome.reason === "PROPOSAL_PENDING"
-            ? "Call get_pending_proposal and wait for the human to decide."
-            : "Fix the input and try again.",
-    ...extra,
-  });
+  return refuse(
+    outcome.message,
+    outcome.reason,
+    outcome.reason === "RULE_VIOLATION"
+      ? "Read get_rulebook, move the offending placement clear of the rule, and submit again. The rule will not be relaxed for you."
+      : outcome.reason === "LOCKED_OBJECT"
+        ? "The human locked that object deliberately. Plan around it and do not try to move it again."
+        : outcome.reason === "PROPOSAL_PENDING"
+          ? "Call get_pending_proposal and wait for the human to decide. Do not submit another plan until they have."
+          : "Correct the named field and call this tool once more. Do not retry the same arguments.",
+    {
+      broken_rule: outcome.rule,
+      offending_item: outcome.offendingItem?.description,
+      margin: outcome.margin,
+      ...extra,
+    }
+  );
 }
 
 const proposeChanges: CanvasTool = {
@@ -351,7 +414,12 @@ const proposeChanges: CanvasTool = {
   execute: (input) => {
     const parsed = parseChanges(input.changes);
     if (typeof parsed === "string") {
-      return refuse(parsed, { reason: "BAD_INPUT" });
+      return refuse(
+        parsed,
+        "BAD_INPUT",
+        "Fix that one entry and submit the whole plan again. Call get_floor_plan if you need current object ids, and note that x and y are metres, not grid cells.",
+        { valid_object_kinds: KIND_ENUM }
+      );
     }
     const summary =
       typeof input.summary === "string" && input.summary.trim()
@@ -391,18 +459,23 @@ const optimiseLayout: CanvasTool = {
     required: ["objective"],
   },
   execute: (input) => {
-    const objective = input.objective as Objective;
-    if (
-      !["maximise_seating", "widen_circulation", "improve_sightlines"].includes(
-        String(objective)
-      )
-    ) {
-      return refuse("Unknown objective.", { reason: "BAD_INPUT" });
+    const { objective, inferredFrom } = resolveObjective(input.objective);
+    if (!objective) {
+      return refuse(
+        `"${String(input.objective ?? "")}" is not an objective this tool accepts.`,
+        "BAD_INPUT",
+        `Call it again with objective set to exactly one of: ${OBJECTIVES.join(
+          ", "
+        )}. To add seating, use maximise_seating and put the number in target_seats.`,
+        { valid_objectives: OBJECTIVES }
+      );
     }
+
     const world = getWorld();
     const result = optimise(world, objective, {
       kind: asKind(input.object_kind) ?? undefined,
-      targetSeats: num(input.target_seats) ?? undefined,
+      targetSeats:
+        num(input.target_seats) ?? seatsFromText(input.objective) ?? undefined,
     });
 
     if (result.changes.length === 0) {
@@ -410,13 +483,22 @@ const optimiseLayout: CanvasTool = {
         `No change could be found that satisfies the current rulebook. ${result.notes.join(
           " "
         )}`,
-        { reason: "NO_VALID_PLAN", objective }
+        "NO_VALID_PLAN",
+        "The floor is already as full as the active rules allow. Call get_rulebook and get_violations, then tell the human which rule is the binding constraint rather than retrying.",
+        { objective }
       );
     }
 
     return outcomeToResult(
       submitProposal(result.changes, result.summary, "optimiser"),
-      { notes: result.notes }
+      {
+        notes: result.notes,
+        ...(inferredFrom
+          ? {
+              interpreted_objective: `Read "${inferredFrom}" as the ${objective} objective.`,
+            }
+          : {}),
+      }
     );
   },
 };
@@ -444,7 +526,14 @@ const explainPlacement: CanvasTool = {
     const x = num(input.x);
     const y = num(input.y);
     if (!kind || x === null || y === null) {
-      return refuse("Needs object_kind, x and y.", { reason: "BAD_INPUT" });
+      return refuse(
+        "explain_placement needs object_kind plus numeric x and y in metres.",
+        "BAD_INPUT",
+        `Call it again with object_kind set to one of: ${KIND_ENUM.join(
+          ", "
+        )}, and x and y as plain numbers.`,
+        { valid_object_kinds: KIND_ENUM }
+      );
     }
 
     const world = getWorld();
@@ -516,12 +605,20 @@ const proposeRule: CanvasTool = {
   execute: (input) => {
     const instruction = typeof input.instruction === "string" ? input.instruction : "";
     if (!instruction.trim()) {
-      return refuse("Needs a non-empty instruction.", { reason: "BAD_INPUT" });
+      return refuse(
+        "propose_rule needs a non-empty instruction.",
+        "BAD_INPUT",
+        "Pass the human's standing preference in their own words, for example: never put standing tables near the entrance."
+      );
     }
     const candidate = deriveFromInstruction(instruction, getWorld());
     const result = openRuleProposal(instruction, candidate);
     if (!result.opened) {
-      return refuse(result.message, { reason: "CAPTURE_PENDING" });
+      return refuse(
+        result.message,
+        "CAPTURE_PENDING",
+        "Wait for the human to confirm or dismiss the rule already on screen, then draft this one."
+      );
     }
     return ok({
       status: "awaiting_human_confirmation",

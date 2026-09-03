@@ -428,11 +428,40 @@
 /* Bottom dock */
 
 .dock {
-  flex: 0 0 15rem;
+  flex-grow: 0;
+  flex-shrink: 0;
   display: flex;
-  border-top: 1px solid var(--cds-border-subtle-01);
   min-height: 0;
   background: var(--cds-layer-01);
+}
+
+/* Splitter between the canvas and the dock */
+
+.splitter {
+  flex: 0 0 auto;
+  height: 9px;
+  cursor: ns-resize;
+  background: var(--cds-background);
+  border-top: 1px solid var(--cds-border-subtle-01);
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+.splitter:hover,
+.splitter:active {
+  background: var(--cds-layer-02);
+}
+.splitter-grip {
+  width: 2.5rem;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--cds-border-strong-01);
+  pointer-events: none;
+}
+.splitter:hover .splitter-grip {
+  background: var(--cds-interactive);
 }
 
 .dock-pane {
@@ -805,7 +834,48 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--cds-spacing-04);
+  gap: var(--cds-spacing-03);
+}
+
+/*
+  A tool call is one line, not a bubble. A single request can fire eight of
+  them, and at two lines each the model's actual answer was being pushed off
+  the bottom of the panel.
+*/
+
+.tool-call {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cds-spacing-03);
+  font-family: var(--font-plex-mono), monospace;
+  font-size: 0.6875rem;
+  line-height: 1.125rem;
+  color: var(--cds-link-primary);
+  padding-left: var(--cds-spacing-02);
+  min-width: 0;
+}
+.tool-call-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.tool-call-name {
+  flex: 0 0 auto;
+}
+.tool-call-args {
+  color: var(--cds-text-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.tool-call.working {
+  color: var(--cds-support-warning);
+}
+.tool-call.working .tool-call-dot {
+  animation: violation-pulse 1s ease-in-out infinite;
 }
 
 .msg {
@@ -823,10 +893,14 @@
   color: var(--cds-text-primary);
   background: var(--cds-layer-02);
   padding: var(--cds-spacing-03) var(--cds-spacing-04);
+  border-left: 2px solid var(--cds-interactive);
 }
 .msg.assistant .msg-body {
-  color: var(--cds-text-secondary);
+  color: var(--cds-text-primary);
   white-space: pre-wrap;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  padding: var(--cds-spacing-02) 0 var(--cds-spacing-03);
 }
 .msg.tool .msg-body {
   font-family: var(--font-plex-mono), monospace;
@@ -863,6 +937,7 @@
   gap: var(--cds-spacing-02);
   padding: var(--cds-spacing-03) var(--cds-spacing-05);
   border-top: 1px solid var(--cds-border-subtle-00);
+  flex: 0 0 auto;
 }
 .suggestion {
   font-size: 0.6875rem;
@@ -1017,4 +1092,12 @@
   font-size: 0.6875rem;
   line-height: 1rem;
   color: var(--cds-text-helper);
+}
+
+.inline-code {
+  font-family: var(--font-plex-mono), monospace;
+  font-size: 0.75rem;
+  background: var(--cds-layer-02);
+  padding: 0 var(--cds-spacing-02);
+  color: var(--cds-link-primary);
 }
