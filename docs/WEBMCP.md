@@ -51,7 +51,7 @@ await document.modelContext.registerTool(
 
 Notes on the choices:
 
-**`annotations.readOnlyHint`** is set from the descriptor. The five inspection tools are marked read only so an agent knows it can call them freely. The four that reach the proposal or authoring path are not.
+**`annotations.readOnlyHint`** is set from the descriptor. Six tools carry it: the five inspection tools and `explain_placement`, which answers questions without touching anything. The three that reach the proposal or authoring path do not.
 
 **`AbortController`** scopes the whole surface. One `controller.abort()` withdraws all nine tools, which is what `disconnectBridge` uses.
 

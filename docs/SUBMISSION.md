@@ -20,7 +20,7 @@ When you reject a change the agent proposed, the app does not discard it. It con
 
 **State is genuinely shared and mutable.** Both parties write to the same canvas in the same session. This is not an agent filling in a form on its own, which is where most agent tooling stops.
 
-**Read, preview and write separate cleanly.** Five inspection tools carry `readOnlyHint` and are free to call. The two tools that touch the floor stop at a preview a human approves item by item. That distinction is expressed in the tool contract itself rather than in prompt text, which means it holds regardless of which model is driving.
+**Read, preview and write separate cleanly.** Six of the nine tools carry `readOnlyHint` and are free to call. The two tools that touch the floor stop at a preview a human approves item by item. That distinction is expressed in the tool contract itself rather than in prompt text, which means it holds regardless of which model is driving.
 
 **Refusals carry actionable structure.** A blocked proposal returns the rule id, the rule statement, the offending item and the numeric shortfall in metres. The agent replans against facts rather than guessing at a failure.
 
@@ -53,6 +53,10 @@ The tool contract is not static. When the human ratifies a rule, the two proposa
 Validation runs before any preview is offered. Locks are checked first and separately. Rules are then evaluated differentially, comparing violations before and after the change, so a floor that already has a problem does not refuse every plan including the ones that would fix it.
 
 The page also ships a small built-in agent so the loop is visible without an agent browser to hand. It calls `getTools` and `executeTool` on the same surface, with the model behind a stateless server route. When `document.modelContext` is absent the page installs an identically shaped local stand-in, and the interface says plainly which of the two is in use rather than overstating it.
+
+## Links
+
+Live app: https://constraint-canvas-rho.vercel.app
 
 ## Notes for judges
 

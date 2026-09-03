@@ -4,6 +4,10 @@ A shared floor planning canvas where the human keeps authority through locks and
 
 Built for the WebMCP Challenge.
 
+**Live app: https://constraint-canvas-rho.vercel.app**
+
+Open it in ChatGPT's in-app browser, or in Chrome with `chrome://flags/#enable-webmcp-testing` enabled, and the nine tools below are available to your agent.
+
 ## The idea in one paragraph
 
 Supervising an agent today does not compound. You correct it, the correction lives in a context window, and three turns later you explain yourself again. ConstraintCanvas moves that judgment out of the conversation and into the application. When you reject a change the agent proposed, the app converts the rejection into a named rule with provenance, adds it to a visible rulebook, and enforces it at the tool boundary from then on. The agent does not remember better. The website refuses to let it repeat the mistake.
