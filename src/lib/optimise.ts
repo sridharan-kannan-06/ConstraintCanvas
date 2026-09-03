@@ -21,6 +21,28 @@ export interface PlacementCheck {
   violations: Violation[];
 }
 
+function key(v: Violation): string {
+  return `${v.ruleId}::${[...v.objectIds].sort().join(",")}`;
+}
+
+/**
+ * Violations already present before a candidate is considered. The optimiser
+ * computes this once per placement rather than once per candidate position,
+ * which is worth doing because it otherwise doubles the work of every test.
+ */
+export function baselineKeys(
+  objects: FloorObject[],
+  floor: Floor,
+  rules: Rule[]
+): Set<string> {
+  return new Set(evaluate(objects, floor, rules).map(key));
+}
+
+// The egress path rule floods the whole floor grid, so it costs far more than
+// the rest put together. Candidates are screened against everything else first
+// and only survivors pay for it.
+const EXPENSIVE: Rule["kind"][] = ["egress_path"];
+
 /**
  * Tests a hypothetical object against the live rulebook and reports only the
  * problems that object itself causes. This is the primitive behind both the
@@ -30,20 +52,27 @@ export function checkPlacement(
   probe: FloorObject,
   objects: FloorObject[],
   floor: Floor,
-  rules: Rule[]
+  rules: Rule[],
+  baseline?: Set<string>
 ): PlacementCheck {
-  const baseline = new Set(
-    evaluate(objects, floor, rules).map(
-      (v) => `${v.ruleId}::${[...v.objectIds].sort().join(",")}`
-    )
-  );
-  const after = evaluate([...objects, probe], floor, rules);
-  const caused = after.filter((v) => {
-    const key = `${v.ruleId}::${[...v.objectIds].sort().join(",")}`;
-    if (baseline.has(key)) return false;
-    return v.objectIds.length === 0 || v.objectIds.includes(probe.id);
-  });
-  return { ok: caused.length === 0, violations: caused };
+  const before = baseline ?? baselineKeys(objects, floor, rules);
+  const withProbe = [...objects, probe];
+
+  const caused = (found: Violation[]) =>
+    found.filter((v) => {
+      if (before.has(key(v))) return false;
+      return v.objectIds.length === 0 || v.objectIds.includes(probe.id);
+    });
+
+  const cheapRules = rules.filter((r) => !EXPENSIVE.includes(r.kind));
+  const cheap = caused(evaluate(withProbe, floor, cheapRules));
+  if (cheap.length > 0) return { ok: false, violations: cheap };
+
+  const expensiveRules = rules.filter((r) => EXPENSIVE.includes(r.kind));
+  if (expensiveRules.length === 0) return { ok: true, violations: [] };
+
+  const expensive = caused(evaluate(withProbe, floor, expensiveRules));
+  return { ok: expensive.length === 0, violations: expensive };
 }
 
 function candidatePositions(
@@ -113,19 +142,36 @@ function maximiseSeating(
   const working = [...world.objects];
   const changes: ChangeOp[] = [];
   const notes: string[] = [];
-  const positions = candidatePositions(world.floor, kind, 1);
+  // This pass only ever adds objects, and every rule it can break is monotone
+  // under addition: a position that overlaps, crowds, blocks an exit, eats the
+  // circulation budget or seals off an egress route cannot be rescued by
+  // putting more furniture on the floor. So a candidate rejected in one round
+  // stays rejected, and dropping it saves rescanning it in every later round.
+  let positions = candidatePositions(world.floor, kind, 1);
   let placed = 0;
   let seatsAdded = 0;
 
   while (seatsAdded < targetSeats) {
+    // The floor only changes between rounds, so the baseline is computed here
+    // rather than inside the scan over several hundred candidate positions.
+    const baseline = baselineKeys(working, world.floor, world.rules);
     let best: { x: number; y: number; score: number } | null = null;
+    const survivors: Array<{ x: number; y: number }> = [];
     for (const p of positions) {
       const probe = probeObject(kind, p.x, p.y, `__try_${placed}__`);
-      const check = checkPlacement(probe, working, world.floor, world.rules);
+      const check = checkPlacement(
+        probe,
+        working,
+        world.floor,
+        world.rules,
+        baseline
+      );
       if (!check.ok) continue;
+      survivors.push(p);
       const score = scorePosition(probe, working, world.floor);
       if (!best || score < best.score) best = { ...p, score };
     }
+    positions = survivors;
     if (!best) {
       notes.push(
         `Stopped after ${placed} placements. No remaining position satisfies the rulebook.`

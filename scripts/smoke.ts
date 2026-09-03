@@ -6,7 +6,7 @@ import { deriveCandidates } from "../src/lib/derive";
 import { computeMetrics } from "../src/lib/metrics";
 import { checkPlacement, optimise } from "../src/lib/optimise";
 import { evaluateWorld, probeObject } from "../src/lib/rules";
-import { loadScenario, makeObject } from "../src/lib/scenario";
+import { loadScenario, makeObject, SCENARIOS } from "../src/lib/scenario";
 import type { ProposalItem, Rule, WorldState } from "../src/lib/types";
 
 let failures = 0;
@@ -180,12 +180,35 @@ check(
   evaluateWorld(world).filter((v) => v.ruleId === "builtin.circulation").length === 0
 );
 
-// The optimiser rebuilds the egress grid for every candidate position, so keep
-// an eye on how long a full seat maximisation pass actually takes.
-const started = Date.now();
-optimise(world, "maximise_seating", { targetSeats: 80 });
-const elapsed = Date.now() - started;
-check("a seat maximisation pass finishes quickly", elapsed < 4000, elapsed + " ms");
+// The optimiser runs on the main thread, so a slow pass freezes the interface.
+// Both scenarios are timed because the larger floor costs noticeably more.
+for (const scenario of SCENARIOS) {
+  const started = Date.now();
+  optimise(scenario.build(), "maximise_seating", { targetSeats: 80 });
+  const elapsed = Date.now() - started;
+  check(
+    `seat maximisation on ${scenario.id} stays responsive`,
+    elapsed < 1500,
+    elapsed + " ms"
+  );
+}
+
+// Every shipped scenario must load clean. A preloaded floor that already
+// breaks a rule would make the violation display meaningless on first sight.
+for (const scenario of SCENARIOS) {
+  const w = scenario.build();
+  const v = evaluateWorld(w);
+  const seats = w.objects.reduce((n, o) => n + o.seats, 0);
+  check(
+    `scenario ${scenario.id} loads with no violations`,
+    v.length === 0,
+    v.map((x) => x.margin).join(" | ") || `${w.objects.length} objects, ${seats} seats`
+  );
+  check(
+    `scenario ${scenario.id} leaves room for the agent to work`,
+    optimise(w, "maximise_seating", { targetSeats: 40 }).changes.length > 0
+  );
+}
 
 console.log(failures === 0 ? "\nAll engine checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

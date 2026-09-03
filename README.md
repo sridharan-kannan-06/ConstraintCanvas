@@ -169,11 +169,38 @@ The egress path rule is the one worth knowing about. A table can sit six metres 
 
 **Metrics strip.** Seats, capacity, utilisation, circulation, furthest seat to exit, violations and active rule count.
 
+**Undo.** Every human action is reversible, with Ctrl+Z or the header control. Undo captures the floor and the pending proposal together, so reversing an approval brings back the proposal it resolved, and reversing a ratification withdraws the rule from the published tool descriptions as well as from the rulebook.
+
+## Scenarios
+
+Two preloaded floors, switched from the left rail.
+
+| Scenario | Floor | What it exercises |
+| --- | --- | --- |
+| Willowmere Hall | 30 x 20 m, wedding reception, 96 seats | The west side is laid out and the east is deliberately open, so the agent has somewhere obvious to work |
+| Kestrel Convention Centre | 40 x 24 m, conference expo hall, 140 seats | Three exits, twelve exhibitor booths, marked aisles and far less slack, so the rules bite sooner |
+
+Loading a scenario clears the floor, the rulebook and the log, and asks first if you have authored any rules.
+
+## Export
+
+Two exports, both from the left rail.
+
+**Plan JSON** carries the floor, the metrics, the violations, the activity log, and the rulebook with each rule's origin recorded. The rulebook is the part worth keeping: it is a written specification of the judgment applied during the session, and it is portable.
+
+**Drawing SVG** is the canvas as a standalone file. The page paints with CSS custom properties, which mean nothing once the markup leaves the document, so every `var()` is resolved against the computed root style and the text styles are inlined on the way out.
+
 ## Scope
 
 The constraint model is this application's own simplified planning model. It is labelled as such in the interface and in every `get_rulebook` response. It makes no claim to any real building code in any jurisdiction.
 
 Deliberately out of scope: authentication, any backend database, multi user collaboration, multiple floors, 3D, rotation, freeform resize, and persistence beyond the browser session.
+
+## Performance
+
+The optimiser scans several hundred candidate positions per placement and tests each against the full rulebook, including the egress flood fill. Three things keep an eighty seat pass under a second on the larger floor.
+
+The baseline violation set is computed once per placement rather than once per candidate. Candidates are screened against the cheap rules first, so only survivors pay for the flood fill. And because a seat maximisation pass only ever adds objects, and every rule it can break is monotone under addition, a position rejected in one round is dropped rather than rescanned in the next.
 
 ## Stack
 

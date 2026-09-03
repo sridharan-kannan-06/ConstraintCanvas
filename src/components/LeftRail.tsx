@@ -1,7 +1,11 @@
 "use client";
 
 import { CATALOG, KIND_ORDER } from "@/lib/catalog";
+import { exportDrawingSvg, exportPlanJson } from "@/lib/exportPlan";
+import { SCENARIOS } from "@/lib/scenario";
 import {
+  getState,
+  loadScenarioById,
   removeObjectByHuman,
   resetAll,
   toggleLock,
@@ -116,12 +120,64 @@ export default function LeftRail({ armed, setArmed }: Props) {
       )}
 
       <div style={{ flex: 1 }} />
-      <div style={{ padding: "var(--cds-spacing-05)" }}>
+
+      <div className="panel-head">
+        <span className="panel-title">Scenario</span>
+      </div>
+      <div className="rail-footer">
+        <select
+          className="select"
+          value={state.scenarioId}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next === state.scenarioId) return;
+            if (
+              state.world.rules.some((r) => r.source !== "builtin") &&
+              !confirm(
+                "Loading another scenario clears the floor, the rulebook and the log. Continue?"
+              )
+            ) {
+              return;
+            }
+            loadScenarioById(next);
+          }}
+        >
+          {SCENARIOS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <div className="rail-hint">
+          {SCENARIOS.find((s) => s.id === state.scenarioId)?.subtitle}
+        </div>
+
+        <div className="btn-row" style={{ marginTop: "var(--cds-spacing-04)" }}>
+          <button
+            className="btn small secondary"
+            onClick={() => exportPlanJson(getState())}
+            title="Download the floor, the rulebook with its provenance, the metrics and the activity log"
+          >
+            Export JSON
+          </button>
+          <button
+            className="btn small secondary"
+            onClick={() => exportDrawingSvg(getState())}
+            title="Download the floor drawing as a standalone SVG"
+          >
+            Export SVG
+          </button>
+        </div>
+
         <button
           className="btn small secondary"
-          style={{ width: "100%", justifyContent: "center" }}
+          style={{
+            width: "100%",
+            justifyContent: "center",
+            marginTop: "var(--cds-spacing-03)",
+          }}
           onClick={() => {
-            if (confirm("Reset the floor, rulebook and log to the starting scenario?")) {
+            if (confirm("Reset the floor, rulebook and log to the starting state?")) {
               resetAll();
             }
           }}

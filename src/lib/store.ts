@@ -2,7 +2,13 @@ import { specFor } from "./catalog";
 import { deriveCandidates, type RuleCandidate } from "./derive";
 import { round1, snap } from "./geometry";
 import { evaluate, evaluateWorld, newViolations } from "./rules";
-import { loadScenario, makeObject, nextId } from "./scenario";
+import {
+  DEFAULT_SCENARIO_ID,
+  loadScenario,
+  makeObject,
+  nextId,
+  SCENARIOS,
+} from "./scenario";
 import type {
   ChangeOp,
   FloorObject,
@@ -31,6 +37,13 @@ export interface CaptureState {
   meters: number | null;
 }
 
+export interface HistoryEntry {
+  /** Shown on the undo control so the human knows what will come back. */
+  label: string;
+  world: WorldState;
+  pending: Proposal | null;
+}
+
 export interface AppState {
   world: WorldState;
   pending: Proposal | null;
@@ -40,6 +53,8 @@ export interface AppState {
   bridge: { mode: BridgeMode; tools: string[] };
   /** Ids that were touched by the most recent accepted proposal, for a brief highlight. */
   flash: string[];
+  history: HistoryEntry[];
+  scenarioId: string;
 }
 
 export type ProposalOutcome =
@@ -53,17 +68,22 @@ export type ProposalOutcome =
       margin?: string;
     };
 
-function initialState(): AppState {
+function initialState(scenarioId = DEFAULT_SCENARIO_ID): AppState {
   return {
-    world: loadScenario(),
+    world: loadScenario(scenarioId),
     pending: null,
     log: [],
     selectedId: null,
     capture: null,
     bridge: { mode: "none", tools: [] },
     flash: [],
+    history: [],
+    scenarioId,
   };
 }
+
+/** How many steps back the human can go. Deep enough to cover a demo run. */
+const HISTORY_LIMIT = 40;
 
 let state: AppState = initialState();
 const listeners = new Set<() => void>();
@@ -119,6 +139,46 @@ export function setBridge(mode: BridgeMode, tools: string[]) {
   set((s) => ({ ...s, bridge: { mode, tools } }));
 }
 
+/* Undo. */
+
+/**
+ * Records the state a mutation is about to replace.
+ *
+ * The floor and the pending proposal are captured together, so undoing an
+ * approval brings back the proposal it resolved rather than leaving a change
+ * with no explanation behind it. Rules are inside the world, so revoking or
+ * ratifying one is undoable too.
+ *
+ * Call this immediately before mutating, never after.
+ */
+export function pushHistory(label: string) {
+  const entry: HistoryEntry = {
+    label,
+    world: state.world,
+    pending: state.pending,
+  };
+  set((s) => ({ ...s, history: [...s.history, entry].slice(-HISTORY_LIMIT) }));
+}
+
+export function undo() {
+  const entry = state.history[state.history.length - 1];
+  if (!entry) return;
+  set((s) => ({
+    ...s,
+    world: entry.world,
+    pending: entry.pending,
+    history: s.history.slice(0, -1),
+    capture: null,
+    selectedId: null,
+    flash: [],
+  }));
+  log("human_edit", "human", `Undid: ${entry.label}`);
+}
+
+export function undoLabel(): string | null {
+  return state.history[state.history.length - 1]?.label ?? null;
+}
+
 /* Human editing of the floor. */
 
 export function selectObject(id: string | null) {
@@ -128,12 +188,24 @@ export function selectObject(id: string | null) {
 export function addObjectByHuman(kind: ObjectKind, x: number, y: number) {
   const g = state.world.floor.gridM;
   const obj = makeObject(kind, round1(snap(x, g)), round1(snap(y, g)));
+  pushHistory(`placing ${obj.label}`);
   set((s) => ({
     ...s,
     world: { ...s.world, objects: [...s.world.objects, obj] },
     selectedId: obj.id,
   }));
   log("human_edit", "human", `Placed ${obj.label}.`);
+}
+
+/**
+ * Marks the start of a drag. A drag fires a move on every pointer event, so
+ * history is recorded once here rather than on each frame, and one undo puts
+ * the object back where the drag began.
+ */
+export function beginMove(id: string) {
+  const target = state.world.objects.find((o) => o.id === id);
+  if (!target || target.locked) return;
+  pushHistory(`moving ${target.label}`);
 }
 
 export function moveObjectByHuman(id: string, x: number, y: number) {
@@ -156,6 +228,7 @@ export function moveObjectByHuman(id: string, x: number, y: number) {
 export function removeObjectByHuman(id: string) {
   const target = state.world.objects.find((o) => o.id === id);
   if (!target || target.locked) return;
+  pushHistory(`removing ${target.label}`);
   set((s) => ({
     ...s,
     world: { ...s.world, objects: s.world.objects.filter((o) => o.id !== id) },
@@ -167,6 +240,7 @@ export function removeObjectByHuman(id: string) {
 export function toggleLock(id: string) {
   const target = state.world.objects.find((o) => o.id === id);
   if (!target) return;
+  pushHistory(`${target.locked ? "unlocking" : "locking"} ${target.label}`);
   set((s) => ({
     ...s,
     world: {
@@ -354,6 +428,7 @@ export function acceptItem(itemId: string) {
   const item = pending.items.find((i) => i.id === itemId);
   if (!item || item.status !== "pending") return;
 
+  pushHistory(`accepting ${item.description}`);
   set((s) => {
     const objects = applyChanges(s.world.objects, [item.change]);
     const nextPending: Proposal = {
@@ -378,6 +453,9 @@ export function acceptAll() {
   const live = pending.items.filter((i) => i.status === "pending");
   if (live.length === 0) return;
 
+  pushHistory(
+    `accepting ${live.length} change${live.length === 1 ? "" : "s"}`
+  );
   set((s) => {
     const objects = applyChanges(
       s.world.objects,
@@ -409,6 +487,7 @@ export function rejectItem(itemId: string) {
   const item = pending.items.find((i) => i.id === itemId);
   if (!item || item.status !== "pending") return;
 
+  pushHistory(`rejecting ${item.description}`);
   const candidates = deriveCandidates(item, state.world);
   const first = candidates[0];
 
@@ -515,6 +594,7 @@ export function confirmCapture() {
   );
   if (!candidate) return;
 
+  pushHistory("adding a rule to the rulebook");
   const resolved = applyKnob(candidate, capture.meters);
   const rule: Rule = {
     id: nextId("rule"),
@@ -591,6 +671,7 @@ export function addRule(rule: Rule) {
 export function toggleRule(id: string) {
   const rule = state.world.rules.find((r) => r.id === id);
   if (!rule) return;
+  pushHistory(`${rule.enabled ? "waiving" : "reinstating"} a rule`);
   set((s) => ({
     ...s,
     world: {
@@ -610,6 +691,7 @@ export function toggleRule(id: string) {
 export function deleteRule(id: string) {
   const rule = state.world.rules.find((r) => r.id === id);
   if (!rule || rule.source === "builtin") return;
+  pushHistory("revoking a rule");
   set((s) => ({
     ...s,
     world: { ...s.world, rules: s.world.rules.filter((r) => r.id !== id) },
@@ -626,8 +708,20 @@ export function currentViolations(): Violation[] {
   return evaluateWorld(state.world);
 }
 
-export function resetAll() {
-  state = initialState();
+/**
+ * Loads a scenario from scratch. History is not preserved across a load,
+ * because undoing into a different floor would be meaningless.
+ */
+export function loadScenarioById(id: string) {
+  const scenario = SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0];
+  // The tool surface belongs to the page, not to the floor, so a scenario
+  // load must not blank out what the bridge already registered.
+  const bridge = state.bridge;
+  state = { ...initialState(scenario.id), bridge };
   emit();
-  log("human_edit", "human", "Reset the floor to the Willowmere Hall scenario.");
+  log("human_edit", "human", `Loaded the ${scenario.name} scenario.`);
+}
+
+export function resetAll() {
+  loadScenarioById(state.scenarioId);
 }

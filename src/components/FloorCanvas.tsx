@@ -6,6 +6,7 @@ import { round1, snap } from "@/lib/geometry";
 import { evaluateWorld } from "@/lib/rules";
 import {
   addObjectByHuman,
+  beginMove,
   log,
   moveObjectByHuman,
   selectObject,
@@ -179,6 +180,7 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
     selectObject(o.id);
     if (o.locked) return;
     const p = toMetres(e.clientX, e.clientY);
+    beginMove(o.id);
     dragRef.current = { id: o.id, dx: p.x - o.x, dy: p.y - o.y };
     setDraggingId(o.id);
     (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -267,6 +269,7 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
       )}
       <svg
         ref={svgRef}
+        id="floor-canvas"
         width={W}
         height={H}
         onPointerMove={onPointerMove}

@@ -8,7 +8,7 @@ import LeftRail from "@/components/LeftRail";
 import MetricsStrip from "@/components/MetricsStrip";
 import RightRail from "@/components/RightRail";
 import RuleCapture from "@/components/RuleCapture";
-import { clearFlash } from "@/lib/store";
+import { clearFlash, undo, undoLabel } from "@/lib/store";
 import { useAppState } from "@/lib/useStore";
 import {
   connectBridge,
@@ -73,6 +73,13 @@ export default function Home() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setArmed(null);
+      const typing =
+        e.target instanceof HTMLElement &&
+        ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
+      if (!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -95,6 +102,21 @@ export default function Home() {
           {bridge.label}
           <span style={{ opacity: 0.7 }}>{state.bridge.tools.length} tools</span>
         </span>
+        <button
+          className="btn small secondary"
+          onClick={undo}
+          disabled={state.history.length === 0}
+          title={
+            state.history.length === 0
+              ? "Nothing to undo"
+              : `Undo ${undoLabel()} (Ctrl+Z)`
+          }
+        >
+          Undo
+          {state.history.length > 0 && (
+            <span className="palette-meta">{state.history.length}</span>
+          )}
+        </button>
         <div className="header-spacer" />
         <MetricsStrip />
       </header>
