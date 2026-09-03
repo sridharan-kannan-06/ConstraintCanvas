@@ -2,12 +2,12 @@
 // Verifies the shipped scenario is clean, the optimiser respects the rulebook,
 // and a rejection derives a rule that then blocks the same placement.
 
-import { deriveCandidates } from "../src/lib/derive.ts";
-import { computeMetrics } from "../src/lib/metrics.ts";
-import { checkPlacement, optimise } from "../src/lib/optimise.ts";
-import { evaluateWorld, probeObject } from "../src/lib/rules.ts";
-import { loadScenario } from "../src/lib/scenario.ts";
-import type { ProposalItem, Rule, WorldState } from "../src/lib/types.ts";
+import { deriveCandidates } from "../src/lib/derive";
+import { computeMetrics } from "../src/lib/metrics";
+import { checkPlacement, optimise } from "../src/lib/optimise";
+import { evaluateWorld, probeObject } from "../src/lib/rules";
+import { loadScenario } from "../src/lib/scenario";
+import type { ProposalItem, Rule, WorldState } from "../src/lib/types";
 
 let failures = 0;
 function check(label: string, condition: boolean, extra = "") {
