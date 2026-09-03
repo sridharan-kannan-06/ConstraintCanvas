@@ -48,6 +48,8 @@ Two response headers are set before anything else, since `document.modelContext`
 
 Tools are described once as plain descriptors and registered through a single bridge that wraps every `execute`, so each call and refusal is recorded in the activity log at the boundary rather than inside individual tools. The whole surface is scoped to an `AbortController` and can be withdrawn in one call. Inspection tools carry `annotations.readOnlyHint`. Results are returned as structured JSON rather than prose.
 
+The tool contract is not static. When the human ratifies a rule, the two proposal tools are re-registered with the active human authored rules written into their own descriptions, and the surface fires `toolchange`. A correction therefore narrows what the agent is told it can do, before it composes a call, rather than only what the app will accept afterwards.
+
 Validation runs before any preview is offered. Locks are checked first and separately. Rules are then evaluated differentially, comparing violations before and after the change, so a floor that already has a problem does not refuse every plan including the ones that would fix it.
 
 The page also ships a small built-in agent so the loop is visible without an agent browser to hand. It calls `getTools` and `executeTool` on the same surface, with the model behind a stateless server route. When `document.modelContext` is absent the page installs an identically shaped local stand-in, and the interface says plainly which of the two is in use rather than overstating it.

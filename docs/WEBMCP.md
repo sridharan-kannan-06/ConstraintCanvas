@@ -59,6 +59,14 @@ Notes on the choices:
 
 **Logging is at the boundary.** The wrapper records a `tool_call` entry before running, and a `tool_refusal` entry when the result carries `refused: true`. Individual tools never touch the log, so no tool can forget to.
 
+## Dynamic re-registration
+
+The most interesting use of the API here is that the tool contract is not static.
+
+When the human ratifies a rule, `refreshToolDescriptions` re-registers the two proposal tools with the active human authored rules appended to their descriptions. Registering an existing name replaces the previous definition, and the surface fires `toolchange`, which the interface listens for to keep the Tools panel accurate.
+
+The effect is that correcting the agent narrows what the agent is told it can do, not just what the app will accept. An agent reading the surface after a correction learns the constraint from the tool definition rather than by being refused. The work is skipped when the rule signature has not moved, so there is no churn.
+
 ## The refusal contract
 
 Every refusal is actionable. A bare failure would leave an agent guessing.
