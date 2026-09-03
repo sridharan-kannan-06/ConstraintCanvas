@@ -1,4 +1,4 @@
-import { log, setBridge, type BridgeMode } from "@/lib/store";
+import { getWorld, log, setBridge, type BridgeMode } from "@/lib/store";
 import { summariseCall, TOOLS } from "./tools";
 
 /**
@@ -71,6 +71,27 @@ function installShim(): BridgeMode {
 }
 
 /**
+ * Renders the human authored rules as a block appended to the description of
+ * the tools that can change the floor.
+ *
+ * This is the point of the whole project expressed in the tool contract. A
+ * correction does not just change what the app will accept, it narrows what
+ * the agent is told it is able to do, before it composes a single call. The
+ * constraint arrives as part of the tool definition rather than as an error
+ * the agent has to run into first.
+ */
+function constraintBlock(): string {
+  const authored = getWorld().rules.filter(
+    (r) => r.enabled && r.source !== "builtin"
+  );
+  if (authored.length === 0) return "";
+  const lines = authored.map((r) => `- ${r.statement}`).join("\n");
+  return `\n\nThe human has added ${authored.length} standing rule${
+    authored.length === 1 ? "" : "s"
+  } during this session. Plans that break any of them are refused before they reach the human, so satisfy these first:\n${lines}`;
+}
+
+/**
  * Wraps a tool so that every call, and every refusal, lands in the activity
  * log. The log is the only record that proves real tool traffic happened,
  * so it is captured at the boundary rather than inside each tool.
@@ -79,7 +100,10 @@ function wrap(tool: (typeof TOOLS)[number]): ModelContextTool {
   return {
     name: tool.name,
     title: tool.title,
-    description: tool.description,
+    description:
+      tool.group === "proposal"
+        ? `${tool.description}${constraintBlock()}`
+        : tool.description,
     inputSchema: tool.inputSchema,
     annotations: { readOnlyHint: tool.readOnly },
     execute: async (rawInput) => {
@@ -123,11 +147,22 @@ function wrap(tool: (typeof TOOLS)[number]): ModelContextTool {
 }
 
 let installed: AbortController | null = null;
+let currentMode: BridgeMode = "none";
+/** Signature of the rules currently baked into the proposal tool descriptions. */
+let describedRules = "";
+
+function ruleSignature(): string {
+  return getWorld()
+    .rules.filter((r) => r.enabled && r.source !== "builtin")
+    .map((r) => r.statement)
+    .join("|");
+}
 
 /** Registers the whole tool surface. Safe to call more than once. */
 export async function connectBridge(): Promise<void> {
   if (installed) return;
   const mode = installShim();
+  currentMode = mode;
   if (mode === "none") {
     setBridge("none", []);
     log(
@@ -146,6 +181,7 @@ export async function connectBridge(): Promise<void> {
   for (const tool of TOOLS) {
     await mc.registerTool(wrap(tool), { signal: controller.signal });
   }
+  describedRules = ruleSignature();
 
   const registered = await mc.getTools();
   setBridge(
@@ -161,10 +197,59 @@ export async function connectBridge(): Promise<void> {
   );
 }
 
+/**
+ * Re-publishes the proposal tools when the human authored rules change, so an
+ * agent reading the surface sees the narrowed contract rather than the one it
+ * was handed at page load. Cheap to call, and a no-op when nothing moved.
+ */
+export async function refreshToolDescriptions(): Promise<void> {
+  if (!installed) return;
+  const signature = ruleSignature();
+  if (signature === describedRules) return;
+  describedRules = signature;
+
+  const mc = document.modelContext;
+  if (!mc) return;
+
+  // Registering the same name again replaces the previous definition.
+  for (const tool of TOOLS) {
+    if (tool.group !== "proposal") continue;
+    await mc.registerTool(wrap(tool), { signal: installed.signal });
+  }
+
+  const count = getWorld().rules.filter(
+    (r) => r.enabled && r.source !== "builtin"
+  ).length;
+  log(
+    "tool_call",
+    "app",
+    `Re-published propose_changes and optimise_layout with ${count} human authored rule${
+      count === 1 ? "" : "s"
+    } in the contract.`
+  );
+}
+
 export function disconnectBridge() {
   installed?.abort();
   installed = null;
+  currentMode = "none";
+  describedRules = "";
   setBridge("none", []);
+}
+
+export function bridgeMode(): BridgeMode {
+  return currentMode;
+}
+
+/** Re-reads the surface and updates the tool list shown in the interface. */
+export async function syncTools(): Promise<void> {
+  const mc = document.modelContext;
+  if (!mc) return;
+  const tools = await mc.getTools();
+  setBridge(
+    currentMode,
+    tools.map((t) => t.name)
+  );
 }
 
 /**

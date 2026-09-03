@@ -10,7 +10,11 @@ import RightRail from "@/components/RightRail";
 import RuleCapture from "@/components/RuleCapture";
 import { clearFlash } from "@/lib/store";
 import { useAppState } from "@/lib/useStore";
-import { connectBridge } from "@/webmcp/bridge";
+import {
+  connectBridge,
+  refreshToolDescriptions,
+  syncTools,
+} from "@/webmcp/bridge";
 import type { ObjectKind } from "@/lib/types";
 import "./app.css";
 
@@ -37,6 +41,26 @@ export default function Home() {
 
   useEffect(() => {
     void connectBridge();
+  }, []);
+
+  // When the rulebook changes, re-publish the tools that can change the floor
+  // so their descriptions carry the narrowed contract. An agent reading the
+  // surface after a correction is told about the rule rather than discovering
+  // it by being refused.
+  useEffect(() => {
+    void refreshToolDescriptions();
+  }, [state.world.rules]);
+
+  // The spec fires toolchange whenever the accessible surface moves, which is
+  // the correct signal for keeping the Tools panel honest.
+  useEffect(() => {
+    const mc = document.modelContext;
+    if (!mc) return;
+    const onChange = () => {
+      void syncTools();
+    };
+    mc.addEventListener("toolchange", onChange);
+    return () => mc.removeEventListener("toolchange", onChange);
   }, []);
 
   // Briefly outline whatever the human just accepted, then clear the marker.
