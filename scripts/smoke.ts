@@ -210,5 +210,25 @@ for (const scenario of SCENARIOS) {
   );
 }
 
+// Placement tidiness. A plan can satisfy every rule and still look wrong if
+// the new tables land between the existing rows rather than continuing them.
+const tidy = optimise(world, "maximise_seating", { targetSeats: 40 });
+const existingTables = world.objects.filter((o) => o.kind === "round_table");
+const added = tidy.changes.filter((c) => c.op === "add") as Array<{
+  x: number;
+  y: number;
+}>;
+const near = (a: number, b: number) => Math.abs(a - b) < 0.05;
+const alignedCount = added.filter(
+  (a) =>
+    existingTables.some((o) => near(o.x, a.x)) ||
+    existingTables.some((o) => near(o.y, a.y))
+).length;
+check(
+  "every proposed table shares a row or column with the existing block",
+  added.length > 0 && alignedCount === added.length,
+  added.map((a) => `${a.x},${a.y}`).join("  ")
+);
+
 console.log(failures === 0 ? "\nAll engine checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

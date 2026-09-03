@@ -91,6 +91,59 @@ function candidatePositions(
 }
 
 /**
+ * The set of coordinates an existing run of furniture implies along one axis.
+ *
+ * Takes the positions already in use, works out the pitch they repeat at, and
+ * extends that rhythm to the edges of the floor. A new row at 16 continues a
+ * block sitting at 7, 10 and 13. A row at 15 does not, even though it breaks
+ * no rule, and that is exactly the sort of thing a human notices immediately
+ * and an optimiser scoring only clearance never will.
+ */
+function lattice(values: number[], limit: number): Set<number> {
+  const half = (v: number) => Math.round(v * 2) / 2;
+  const uniq = [...new Set(values.map(half))].sort((a, b) => a - b);
+  const out = new Set(uniq);
+  if (uniq.length < 2) return out;
+
+  const counts = new Map<number, number>();
+  for (let i = 1; i < uniq.length; i++) {
+    const d = half(uniq[i] - uniq[i - 1]);
+    if (d > 0) counts.set(d, (counts.get(d) ?? 0) + 1);
+  }
+  const pitch = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!pitch || pitch <= 0) return out;
+
+  for (let v = uniq[0] - pitch; v >= 0; v -= pitch) out.add(half(v));
+  for (let v = uniq[uniq.length - 1] + pitch; v <= limit; v += pitch) {
+    out.add(half(v));
+  }
+  return out;
+}
+
+interface Lattices {
+  xs: Set<number>;
+  ys: Set<number>;
+}
+
+function latticesFor(
+  objects: FloorObject[],
+  kind: ObjectKind,
+  floor: Floor
+): Lattices {
+  const same = objects.filter((o) => o.kind === kind);
+  return {
+    xs: lattice(
+      same.map((o) => o.x),
+      floor.widthM
+    ),
+    ys: lattice(
+      same.map((o) => o.y),
+      floor.heightM
+    ),
+  };
+}
+
+/**
  * Scores a valid position. Lower is better.
  *
  * The intent is a plan a human would recognise as tidy rather than a
@@ -101,28 +154,57 @@ function candidatePositions(
 function scorePosition(
   probe: FloorObject,
   objects: FloorObject[],
-  floor: Floor
+  floor: Floor,
+  lattices: Lattices
 ): number {
   const c = centreOf(rectOf(probe));
   const seating = objects.filter((o) => o.seats > 0);
+  const sameKind = objects.filter((o) => o.kind === probe.kind);
   const stage = objects.find((o) => o.kind === "stage");
 
   let score = 0;
+
+  /*
+   * Alignment dominates everything else.
+   *
+   * A plan that is merely legal still looks wrong if the new tables sit
+   * between the existing rows. Sharing a row or a column with furniture of the
+   * same kind is what makes an addition read as a continuation of the layout
+   * rather than as clutter dropped into the gaps, and it is the first thing a
+   * human notices about a proposal.
+   */
+  const half = (v: number) => Math.round(v * 2) / 2;
+  if (!lattices.xs.has(half(probe.x))) score += 12;
+  if (!lattices.ys.has(half(probe.y))) score += 12;
+
+  // Sharing a coordinate with something already placed beats merely sitting on
+  // the implied rhythm, so a block fills out before it starts a new run.
+  const aligns = (a: number, b: number) => Math.abs(a - b) < 0.05;
+  if (!sameKind.some((o) => aligns(o.x, probe.x))) score += 3;
+  if (!sameKind.some((o) => aligns(o.y, probe.y))) score += 3;
 
   if (seating.length > 0) {
     const nearest = Math.min(
       ...seating.map((o) => rectGap(rectOf(probe), rectOf(o)))
     );
-    // Prefer sitting just past the minimum clearance rather than far away.
-    score += Math.abs(nearest - 1.2) * 3;
+    // Sit just past the minimum clearance rather than far away, so the block
+    // grows outward at its own pitch instead of drifting across the floor.
+    score += Math.abs(nearest - 1.2) * 4;
+
+    // Keep the seating compact by pulling towards where it already is.
+    const cx =
+      seating.reduce((n, o) => n + centreOf(rectOf(o)).x, 0) / seating.length;
+    const cy =
+      seating.reduce((n, o) => n + centreOf(rectOf(o)).y, 0) / seating.length;
+    score += Math.hypot(c.x - cx, c.y - cy) * 0.5;
   }
 
-  if (stage) {
-    const sc = centreOf(rectOf(stage));
-    score += Math.hypot(c.x - sc.x, c.y - sc.y) * 0.4;
-  } else {
-    score += Math.hypot(c.x - floor.widthM / 2, c.y - floor.heightM / 2) * 0.4;
-  }
+  // A mild pull towards the stage, enough to break ties but not enough to
+  // outweigh lining up with the rows that are already there.
+  const focus = stage
+    ? centreOf(rectOf(stage))
+    : { x: floor.widthM / 2, y: floor.heightM / 2 };
+  score += Math.hypot(c.x - focus.x, c.y - focus.y) * 0.15;
 
   return score;
 }
@@ -155,6 +237,9 @@ function maximiseSeating(
     // The floor only changes between rounds, so the baseline is computed here
     // rather than inside the scan over several hundred candidate positions.
     const baseline = baselineKeys(working, world.floor, world.rules);
+    // Recomputed each round so the rhythm accounts for what has just been
+    // added, which keeps a run growing in one direction.
+    const lattices = latticesFor(working, kind, world.floor);
     let best: { x: number; y: number; score: number } | null = null;
     const survivors: Array<{ x: number; y: number }> = [];
     for (const p of positions) {
@@ -168,7 +253,7 @@ function maximiseSeating(
       );
       if (!check.ok) continue;
       survivors.push(p);
-      const score = scorePosition(probe, working, world.floor);
+      const score = scorePosition(probe, working, world.floor, lattices);
       if (!best || score < best.score) best = { ...p, score };
     }
     positions = survivors;

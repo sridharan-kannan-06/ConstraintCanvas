@@ -56,8 +56,12 @@ function buildWillowmere(): WorldState {
   objects.push(makeObject("bar", 1, 3.5, { label: "Champagne bar" }));
 
   let table = 0;
-  for (const y of [7, 9.9, 12.8]) {
-    for (const x of [2, 4.9, 7.8, 10.7]) {
+  // A three metre pitch on whole metres. The gap between neighbours is 1.2 m,
+  // comfortably past the 0.9 m clearance rule, and every position sits on the
+  // lattice the optimiser scans, so anything it adds lines up with what is
+  // already here instead of landing between rows.
+  for (const y of [7, 10, 13]) {
+    for (const x of [2, 5, 8, 11]) {
       table += 1;
       objects.push(makeObject("round_table", x, y, { label: `Table ${table}` }));
     }
@@ -110,7 +114,7 @@ function buildKestrel(): WorldState {
     makeObject("rect_table", 4, 3, { label: "Registration desk A" })
   );
   objects.push(
-    makeObject("rect_table", 7.5, 3, { label: "Registration desk B" })
+    makeObject("rect_table", 8, 3, { label: "Registration desk B" })
   );
   objects.push(makeObject("bar", 33, 3, { label: "Coffee bar" }));
 
@@ -128,8 +132,8 @@ function buildKestrel(): WorldState {
   objects.push(makeObject("walkway", 28, 16, { label: "Expo aisle" }));
 
   let table = 0;
-  for (const y of [16.5, 19.4]) {
-    for (const x of [3, 5.9, 8.8, 11.7, 14.6, 17.5, 20.4, 23.3]) {
+  for (const y of [16, 19]) {
+    for (const x of [3, 6, 9, 12, 15, 18, 21, 24]) {
       table += 1;
       objects.push(makeObject("round_table", x, y, { label: `Table ${table}` }));
     }

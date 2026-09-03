@@ -18,6 +18,13 @@ interface Ghost {
   key: string;
   kind: ObjectKind;
   label: string;
+  /**
+   * What actually gets drawn on the shape. A proposal of five tables writes
+   * five copies of "Round table (proposed 3)" across a floor where each one is
+   * 1.8 m wide, and they collide with each other and with the furniture
+   * underneath. The tray carries the full wording.
+   */
+  short: string;
   rect: Rect;
   mode: "add" | "move";
 }
@@ -75,6 +82,7 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
             key: item.id,
             kind: c.kind,
             label: c.label ?? spec.label,
+            short: spec.seats > 0 ? `+${spec.seats}` : "new",
             rect: { x: c.x, y: c.y, w: spec.w, h: spec.h },
             mode: "add",
           });
@@ -86,6 +94,7 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
             key: item.id,
             kind: existing.kind,
             label: existing.label,
+            short: "moved",
             rect: { x: c.x, y: c.y, w: existing.w, h: existing.h },
             mode: "move",
           });
@@ -388,7 +397,13 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
           const y = o.y * scale;
           const w = o.w * scale;
           const h = o.h * scale;
-          const showLabel = w > 46 && h > 22;
+          // Circles carry their text in the middle, rectangles in the top left.
+          // A round table is only 1.8 m across, so a top left label sits half
+          // outside the shape and collides with its neighbour.
+          const isCircle = spec.shape === "circle";
+          const showLabel = isCircle ? w > 34 : w > 46 && h > 22;
+          const textX = isCircle ? x + w / 2 : x + 4;
+          const textAnchor = isCircle ? "middle" : "start";
 
           return (
             <g
@@ -462,12 +477,22 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
                 />
               )}
               {showLabel && (
-                <text className="obj-label" x={x + 4} y={y + 13}>
+                <text
+                  className="obj-label"
+                  x={textX}
+                  y={isCircle ? y + h / 2 - 1 : y + 13}
+                  textAnchor={textAnchor}
+                >
                   {o.label}
                 </text>
               )}
-              {showLabel && o.seats > 0 && h > 34 && (
-                <text className="obj-sub" x={x + 4} y={y + 25}>
+              {showLabel && o.seats > 0 && (isCircle ? h > 40 : h > 34) && (
+                <text
+                  className="obj-sub"
+                  x={textX}
+                  y={isCircle ? y + h / 2 + 11 : y + 25}
+                  textAnchor={textAnchor}
+                >
                   {o.seats} seats
                 </text>
               )}
@@ -508,14 +533,25 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
               strokeDasharray: "6 3",
               className: "ghost-outline",
             })}
-            {g.rect.w * scale > 46 && (
+            {g.rect.w * scale > 30 && (
               <text
                 className="obj-label"
-                x={g.rect.x * scale + 4}
-                y={g.rect.y * scale + 13}
+                x={
+                  CATALOG[g.kind].shape === "circle"
+                    ? g.rect.x * scale + (g.rect.w * scale) / 2
+                    : g.rect.x * scale + 4
+                }
+                y={
+                  CATALOG[g.kind].shape === "circle"
+                    ? g.rect.y * scale + (g.rect.h * scale) / 2 + 4
+                    : g.rect.y * scale + 13
+                }
+                textAnchor={
+                  CATALOG[g.kind].shape === "circle" ? "middle" : "start"
+                }
                 fill="var(--cc-proposal)"
               >
-                {g.label}
+                {g.short}
               </text>
             )}
           </g>
