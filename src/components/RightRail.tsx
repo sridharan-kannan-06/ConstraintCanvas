@@ -13,6 +13,7 @@ import {
 import { useAppState } from "@/lib/useStore";
 import type { Rule, RuleSource } from "@/lib/types";
 import { IconCheck, IconClose, IconTrash } from "./icons";
+import ToolSurface from "./ToolSurface";
 
 const SOURCE_LABEL: Record<RuleSource, string> = {
   builtin: "built in",
@@ -120,7 +121,7 @@ function RuleRow({ rule, fresh }: { rule: Rule; fresh: boolean }) {
 
 export default function RightRail() {
   const state = useAppState();
-  const [tab, setTab] = useState<"rules" | "violations">("rules");
+  const [tab, setTab] = useState<"rules" | "violations" | "tools">("rules");
   const violations = useMemo(() => evaluateWorld(state.world), [state.world]);
 
   const rules = state.world.rules;
@@ -145,9 +146,17 @@ export default function RightRail() {
         >
           Violations <span className="tab-count">{violations.length}</span>
         </button>
+        <button
+          className={`tab${tab === "tools" ? " active" : ""}`}
+          onClick={() => setTab("tools")}
+        >
+          Tools <span className="tab-count">{state.bridge.tools.length}</span>
+        </button>
       </div>
 
-      {tab === "rules" ? (
+      {tab === "tools" ? (
+        <ToolSurface />
+      ) : tab === "rules" ? (
         <div className="panel-body">
           <div
             className="empty"

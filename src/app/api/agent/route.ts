@@ -1,0 +1,147 @@
+import { NextResponse } from "next/server";
+
+/**
+ * Thin server proxy for the built-in agent panel.
+ *
+ * The key never reaches the browser, and the route holds no conversation
+ * state. The client owns the transcript and, crucially, executes every tool
+ * itself through document.modelContext, so the model reaches the floor plan
+ * only by the same WebMCP surface an external agent would use.
+ */
+
+const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
+
+// Tried in order. The first that does not answer with a 404 is used.
+const MODEL_FALLBACKS = [
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-2.5-flash",
+];
+
+const SYSTEM_INSTRUCTION = `You are the planning assistant built into ConstraintCanvas, a venue floor planner.
+
+The floor plan is not yours. A human owns it. You reach it only through the tools this page publishes.
+
+How to work:
+- Inspect before you act. Call get_floor_plan and get_rulebook before your first proposal in a conversation, and get_violations or get_metrics when the human asks how things stand.
+- You cannot change the floor. propose_changes and optimise_layout stop at a preview the human approves item by item. Say so plainly rather than claiming you have moved anything.
+- Coordinates are metres from the north west corner and refer to the top left of an object footprint.
+- Prefer optimise_layout when the human asks for an outcome such as more seats or wider aisles. Use propose_changes when they name specific placements.
+- If a call is refused, read the rule it names and plan around it. Never argue with a refusal, never ask the human to waive a rule, and never try the same placement twice.
+- When the human states a standing preference, use propose_rule so it becomes a durable constraint rather than something you have to remember.
+- explain_placement answers any question about why something will not fit.
+
+Style: short and concrete. Two or three sentences. Quote exact numbers, rule statements and margins from tool results rather than paraphrasing them. Never invent an object id.`;
+
+interface GeminiPart {
+  text?: string;
+  functionCall?: { name: string; args: Record<string, unknown> };
+  functionResponse?: { name: string; response: Record<string, unknown> };
+}
+
+interface GeminiContent {
+  role: "user" | "model";
+  parts: GeminiPart[];
+}
+
+export async function POST(request: Request) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    return NextResponse.json(
+      {
+        kind: "error",
+        message:
+          "No GEMINI_API_KEY is configured on the server, so the built-in agent is off. The WebMCP tool surface still works: open this page in an agent browser, or in Chrome with the WebMCP testing flag, and drive it from there.",
+      },
+      { status: 200 }
+    );
+  }
+
+  let body: { contents?: GeminiContent[]; tools?: unknown[] };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { kind: "error", message: "Malformed request body." },
+      { status: 400 }
+    );
+  }
+
+  const contents = body.contents ?? [];
+  const functionDeclarations = body.tools ?? [];
+
+  const payload = {
+    systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+    contents,
+    tools: functionDeclarations.length
+      ? [{ functionDeclarations }]
+      : undefined,
+    generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
+  };
+
+  const models = process.env.GEMINI_MODEL
+    ? [process.env.GEMINI_MODEL, ...MODEL_FALLBACKS]
+    : MODEL_FALLBACKS;
+
+  let lastError = "The model could not be reached.";
+
+  for (const model of models) {
+    let response: Response;
+    try {
+      response = await fetch(`${ENDPOINT}/${model}:generateContent`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-goog-api-key": key,
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      continue;
+    }
+
+    if (response.status === 404) {
+      lastError = `Model ${model} is not available to this key.`;
+      continue;
+    }
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const detail =
+        (data as { error?: { message?: string } } | null)?.error?.message ??
+        `HTTP ${response.status}`;
+      // A bad key or a quota problem will not be fixed by trying another model.
+      if (response.status === 400 || response.status === 401 || response.status === 403) {
+        return NextResponse.json({ kind: "error", message: detail }, { status: 200 });
+      }
+      lastError = detail;
+      continue;
+    }
+
+    const candidate = (
+      data as { candidates?: Array<{ content?: GeminiContent }> } | null
+    )?.candidates?.[0];
+    const parts = candidate?.content?.parts ?? [];
+
+    const calls = parts
+      .filter((p) => p.functionCall)
+      .map((p) => p.functionCall as { name: string; args: Record<string, unknown> });
+    const text = parts
+      .filter((p) => typeof p.text === "string")
+      .map((p) => p.text)
+      .join("")
+      .trim();
+
+    return NextResponse.json({
+      kind: calls.length > 0 ? "calls" : "text",
+      calls,
+      text,
+      model,
+    });
+  }
+
+  return NextResponse.json({ kind: "error", message: lastError }, { status: 200 });
+}

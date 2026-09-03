@@ -105,9 +105,61 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
           id: r.id,
           rect: r.params.zone as Rect,
           name: r.params.zoneName ?? "reserved",
+          source: r.source,
         })),
     [rules]
   );
+
+  /*
+   * Clearance rules are drawn as haloes around the object they protect. A rule
+   * the human just ratified therefore becomes visible geometry on the floor
+   * rather than a line of text in a panel somewhere.
+   */
+  const haloes = useMemo(() => {
+    const out: Array<{
+      key: string;
+      rect: Rect;
+      metres: number;
+      colour: string;
+      dashed: boolean;
+    }> = [];
+    for (const rule of rules) {
+      if (!rule.enabled) continue;
+      const metres = rule.params.meters;
+      if (!metres) continue;
+
+      let anchors: FloorObject[] = [];
+      if (rule.kind === "exit_clearance") {
+        anchors = objects.filter((o) => o.kind === "exit");
+      } else if (rule.kind === "keep_clear_of") {
+        anchors = rule.params.anchorId
+          ? objects.filter((o) => o.id === rule.params.anchorId)
+          : objects.filter((o) =>
+              (rule.params.fromKinds ?? []).includes(o.kind)
+            );
+      } else {
+        continue;
+      }
+
+      const colour =
+        rule.source === "builtin" ? "var(--cds-support-success)" : "var(--cc-proposal)";
+      for (const a of anchors) {
+        out.push({
+          key: `${rule.id}-${a.id}`,
+          rect: {
+            x: a.x - metres,
+            y: a.y - metres,
+            w: a.w + metres * 2,
+            h: a.h + metres * 2,
+          },
+          metres,
+          colour,
+          dashed: rule.source !== "builtin",
+        });
+      }
+    }
+    return out;
+  }, [rules, objects]);
 
   const toMetres = useCallback(
     (clientX: number, clientY: number) => {
@@ -257,6 +309,16 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
           >
             <line x1="0" y1="0" x2="0" y2="8" stroke="var(--cc-proposal)" strokeWidth="2" />
           </pattern>
+          <pattern
+            id="walkHatch"
+            width="10"
+            height="10"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <rect width="10" height="10" fill="#2f2f2f" />
+            <line x1="0" y1="0" x2="0" y2="10" stroke="#4a4a4a" strokeWidth="3" />
+          </pattern>
         </defs>
 
         <rect x={0} y={0} width={W} height={H} fill="var(--cc-floor)" />
@@ -285,6 +347,23 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
               opacity={0.5}
             />
           </g>
+        ))}
+
+        {haloes.map((h) => (
+          <rect
+            key={h.key}
+            x={h.rect.x * scale}
+            y={h.rect.y * scale}
+            width={h.rect.w * scale}
+            height={h.rect.h * scale}
+            rx={h.metres * scale}
+            fill="none"
+            stroke={h.colour}
+            strokeWidth="1"
+            strokeDasharray={h.dashed ? "5 4" : "2 4"}
+            opacity={0.45}
+            pointerEvents="none"
+          />
         ))}
 
         <rect
@@ -325,16 +404,50 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
                   strokeWidth: 8,
                   className: "violation-glow",
                 })}
+              {state.flash.includes(o.id) &&
+                renderShape(o.kind, o, {
+                  fill: "none",
+                  stroke: "#ffffff",
+                  strokeWidth: 6,
+                  opacity: 0.7,
+                  className: "violation-glow",
+                })}
               {renderShape(o.kind, o, {
-                fill: spec.colour,
-                fillOpacity: 0.82,
+                fill: o.kind === "walkway" ? "url(#walkHatch)" : spec.colour,
+                fillOpacity: o.kind === "walkway" ? 1 : 0.82,
                 stroke: o.locked
                   ? "var(--cc-locked)"
                   : selected
                     ? "#ffffff"
-                    : "rgba(0,0,0,0.45)",
+                    : o.kind === "walkway"
+                      ? "#5a5a5a"
+                      : "rgba(0,0,0,0.45)",
                 strokeWidth: o.locked ? 2.5 : selected ? 2 : 1,
+                strokeDasharray: o.kind === "walkway" ? "6 4" : undefined,
               })}
+              {o.kind === "exit" && (
+                <>
+                  <rect
+                    x={x - 1.5}
+                    y={y - 1.5}
+                    width={w + 3}
+                    height={h + 3}
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                    pointerEvents="none"
+                  />
+                  <text
+                    className="obj-sub"
+                    x={x + w / 2}
+                    y={y < H / 2 ? y + h + 12 : y - 5}
+                    textAnchor="middle"
+                    fill="var(--cds-support-success)"
+                  >
+                    {o.label}
+                  </text>
+                </>
+              )}
               {removingIds.has(o.id) && (
                 <line
                   x1={x}

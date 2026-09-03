@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import ActivityLog from "@/components/ActivityLog";
+import AgentPanel from "@/components/AgentPanel";
 import FloorCanvas from "@/components/FloorCanvas";
 import LeftRail from "@/components/LeftRail";
 import MetricsStrip from "@/components/MetricsStrip";
 import RightRail from "@/components/RightRail";
 import RuleCapture from "@/components/RuleCapture";
-import ToolSurface from "@/components/ToolSurface";
+import { clearFlash } from "@/lib/store";
 import { useAppState } from "@/lib/useStore";
 import { connectBridge } from "@/webmcp/bridge";
 import type { ObjectKind } from "@/lib/types";
@@ -37,6 +38,13 @@ export default function Home() {
   useEffect(() => {
     void connectBridge();
   }, []);
+
+  // Briefly outline whatever the human just accepted, then clear the marker.
+  useEffect(() => {
+    if (state.flash.length === 0) return;
+    const t = setTimeout(clearFlash, 1400);
+    return () => clearTimeout(t);
+  }, [state.flash]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -74,12 +82,7 @@ export default function Home() {
           <FloorCanvas armed={armed} onPlaced={() => setArmed(null)} />
           <div className="dock">
             <ActivityLog />
-            <section className="dock-pane">
-              <div className="panel-head">
-                <span className="panel-title">Published tool surface</span>
-              </div>
-              <ToolSurface />
-            </section>
+            <AgentPanel />
           </div>
         </main>
 
