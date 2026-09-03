@@ -63,6 +63,12 @@ The rule lands at the top of the rulebook tagged **from a rejection**, with the 
 
 ### 1:40 to 2:10, the rule holds
 
+**Clear the proposal tray first.** Accept or reject everything still pending
+before you ask the agent to retry. Only one proposal can be open at a time, so
+a retry while the tray is still full is refused with `PROPOSAL_PENDING`, which
+is the wrong refusal for this beat. You want the rule refusal, not the queue
+refusal.
+
 Ask the agent to try the same thing again.
 
 > "Put a table back where I just rejected one."
@@ -70,6 +76,14 @@ Ask the agent to try the same thing again.
 The activity log shows the refusal in red with the rule statement and the margin. Read it out.
 
 > "Refused at the tool boundary. Not talked out of it, not persuaded. The plan never reached me, and the agent was told which rule and by how much."
+
+The refusal reads, in full:
+
+```
+RULE_VIOLATION
+No round table within 3.0 m of any exit.
+Round table is 2.5 m from North exit, 0.5 m short of the 3.0 m the rule requires.
+```
 
 Then ask it to work around the rule.
 
@@ -98,6 +112,20 @@ The agent drafts a structured rule. You confirm it. Note that the champagne bar 
 Pan the rulebook, now several rules deep, each with its origin.
 
 > "Eight built in rules, and everything below them came from me correcting the agent once. None of this lives in the model's memory. It lives in the website. That is the point. Supervision that compounds."
+
+## Verified end to end
+
+This exact sequence was run against the build. If yours diverges, something
+has regressed:
+
+| Step | Result |
+| --- | --- |
+| Agent proposes | Add 5 round tables for 40 extra seats |
+| Reject the one nearest an exit | Capture offers: No round table within 3.0 m of any exit |
+| Ratify it | Rulebook goes to 9, and the rule appears in the propose_changes description |
+| Accept the rest | 96 to 128 seats, 0 violations |
+| Agent retries the rejected spot | Refused, 0.5 m short of the 3.0 m the rule requires |
+| Agent replans | Add 2 round tables for 16 extra seats |
 
 ## What must be legible on screen
 
