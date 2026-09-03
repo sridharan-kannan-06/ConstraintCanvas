@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { TOOLS } from "@/webmcp/tools";
+import { safeGetTools } from "@/webmcp/bridge";
 import { useAppState } from "@/lib/useStore";
 
 const GROUP_LABEL: Record<string, string> = {
@@ -27,9 +28,7 @@ export default function ToolSurface() {
   const [live, setLive] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const mc = document.modelContext;
-    if (!mc) return;
-    void mc.getTools().then((tools) => {
+    void safeGetTools().then((tools) => {
       setLive(
         Object.fromEntries(tools.map((t) => [t.name, t.description ?? ""]))
       );

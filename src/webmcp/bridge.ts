@@ -55,6 +55,76 @@ class ShimModelContext extends EventTarget {
   }
 }
 
+/*
+ * Everything below feature detects before it calls.
+ *
+ * The specification describes ModelContext as an EventTarget with getTools and
+ * executeTool, but a shipping implementation does not have to expose all of
+ * that, and one of them does not. Calling a method that is not there from
+ * inside a React effect takes the whole page down, which is how this app
+ * managed to render nothing at all in the one browser it most needed to work
+ * in. So the contract is treated as a floor of registerTool, and every other
+ * capability is optional.
+ */
+
+/** Reads the surface, falling back to the local descriptors if it cannot. */
+export async function safeGetTools(): Promise<RegisteredTool[]> {
+  const mc = document.modelContext;
+  if (mc && typeof mc.getTools === "function") {
+    try {
+      const tools = await mc.getTools();
+      if (Array.isArray(tools)) return tools;
+    } catch {
+      // Fall through to the local descriptors below.
+    }
+  }
+  return TOOLS.map((t) => ({
+    name: t.name,
+    title: t.title,
+    description: t.description,
+    inputSchema: t.inputSchema,
+    annotations: { readOnlyHint: t.readOnly },
+  }));
+}
+
+/**
+ * Subscribes to tool changes by whichever mechanism the surface offers, and
+ * returns a cleanup function. Does nothing at all if it offers neither.
+ */
+export function subscribeToolChange(handler: () => void): () => void {
+  const mc = document.modelContext;
+  if (!mc) return () => {};
+
+  if (typeof mc.addEventListener === "function") {
+    try {
+      mc.addEventListener("toolchange", handler);
+      return () => {
+        try {
+          mc.removeEventListener?.("toolchange", handler);
+        } catch {
+          // Nothing to unwind if the surface never accepted the listener.
+        }
+      };
+    } catch {
+      // Fall through to the property based handler.
+    }
+  }
+
+  if ("ontoolchange" in mc) {
+    try {
+      const previous = mc.ontoolchange;
+      mc.ontoolchange = handler as typeof mc.ontoolchange;
+      return () => {
+        mc.ontoolchange = previous;
+      };
+    } catch {
+      // Surface exposes the property but will not let us set it.
+    }
+  }
+
+  return () => {};
+}
+
 function installShim(): BridgeMode {
   if (document.modelContext) return "native";
   try {
@@ -197,15 +267,27 @@ export async function connectBridge(): Promise<void> {
   if (!mc) return;
   installed = true;
 
+  const failed: string[] = [];
   for (const tool of TOOLS) {
-    await publish(mc, tool);
+    try {
+      await publish(mc, tool);
+    } catch (err) {
+      failed.push(tool.name);
+      log(
+        "tool_refusal",
+        "app",
+        `The browser refused to register ${tool.name}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
   }
   describedRules = ruleSignature();
 
-  const registered = await mc.getTools();
+  const registered = await safeGetTools();
   setBridge(
     mode,
-    registered.map((t) => t.name)
+    registered.map((t) => t.name).filter((n) => !failed.includes(n))
   );
   log(
     "tool_call",
@@ -238,7 +320,7 @@ export async function refreshToolDescriptions(): Promise<void> {
   // The surface is read back rather than assumed. If a re-publish ever left a
   // tool missing or duplicated, the count in the header would say so instead
   // of the page quietly claiming a contract it is no longer serving.
-  const registered = await mc.getTools();
+  const registered = await safeGetTools();
   setBridge(
     currentMode,
     registered.map((t) => t.name)
@@ -272,9 +354,7 @@ export function bridgeMode(): BridgeMode {
 
 /** Re-reads the surface and updates the tool list shown in the interface. */
 export async function syncTools(): Promise<void> {
-  const mc = document.modelContext;
-  if (!mc) return;
-  const tools = await mc.getTools();
+  const tools = await safeGetTools();
   setBridge(
     currentMode,
     tools.map((t) => t.name)
@@ -291,9 +371,29 @@ export async function callToolThroughBridge(
   input: Record<string, unknown>
 ): Promise<string> {
   const mc = document.modelContext;
-  if (!mc) throw new Error("No model context available.");
-  const tools = await mc.getTools();
-  const match = tools.find((t) => t.name === name);
-  if (!match) throw new Error(`Tool ${name} is not registered.`);
-  return mc.executeTool(match, input);
+
+  // Preferred path, and the one an external agent uses.
+  if (mc && typeof mc.executeTool === "function") {
+    const tools = await safeGetTools();
+    const match = tools.find((t) => t.name === name);
+    if (match) {
+      try {
+        return await mc.executeTool(match, input);
+      } catch (err) {
+        // A surface may register tools for its own agent without letting the
+        // page invoke them. That is a reasonable restriction, so the built-in
+        // panel falls through to the descriptor rather than failing outright.
+        log(
+          "tool_refusal",
+          "app",
+          `executeTool was unavailable for ${name}, ran the tool directly instead.`,
+          { detail: err instanceof Error ? err.message : String(err) }
+        );
+      }
+    }
+  }
+
+  const local = TOOLS.find((t) => t.name === name);
+  if (!local) throw new Error(`Tool ${name} is not registered.`);
+  return JSON.stringify(await wrap(local).execute(input, {}), null, 2);
 }

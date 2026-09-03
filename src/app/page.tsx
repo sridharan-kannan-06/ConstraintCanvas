@@ -13,6 +13,7 @@ import { useAppState } from "@/lib/useStore";
 import {
   connectBridge,
   refreshToolDescriptions,
+  subscribeToolChange,
   syncTools,
 } from "@/webmcp/bridge";
 import type { ObjectKind } from "@/lib/types";
@@ -70,17 +71,9 @@ export default function Home() {
     void refreshToolDescriptions();
   }, [state.world.rules]);
 
-  // The spec fires toolchange whenever the accessible surface moves, which is
-  // the correct signal for keeping the Tools panel honest.
-  useEffect(() => {
-    const mc = document.modelContext;
-    if (!mc) return;
-    const onChange = () => {
-      void syncTools();
-    };
-    mc.addEventListener("toolchange", onChange);
-    return () => mc.removeEventListener("toolchange", onChange);
-  }, []);
+  // toolchange is the right signal for keeping the Tools panel honest, but not
+  // every surface offers it, so the subscription is feature detected.
+  useEffect(() => subscribeToolChange(() => void syncTools()), []);
 
   // Briefly outline whatever the human just accepted, then clear the marker.
   useEffect(() => {

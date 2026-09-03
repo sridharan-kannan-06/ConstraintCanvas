@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "surface": "tsx scripts/surface-test.ts",
+    "test": "npm run smoke && npm run surface"
   },
   "dependencies": {
     "next": "^16.3.4",

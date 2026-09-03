@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { callToolThroughBridge } from "@/webmcp/bridge";
+import { callToolThroughBridge, safeGetTools } from "@/webmcp/bridge";
 import { TOOLS } from "@/webmcp/tools";
 import { useAppState } from "@/lib/useStore";
 import { IconCollapse, IconExpand, IconSend } from "./icons";
@@ -109,9 +109,7 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
 
   /** Converts the published tool surface into Gemini function declarations. */
   async function declarations() {
-    const mc = document.modelContext;
-    if (!mc) return [];
-    const tools = await mc.getTools();
+    const tools = await safeGetTools();
 
     return tools.map((t) => {
       const published = t.inputSchema as
