@@ -100,21 +100,26 @@ export default function AgentPanel() {
         }
 
         if (data.kind === "calls" && data.calls?.length) {
+          // Echo the model turn back exactly as it arrived. Thinking models
+          // attach a signature to each function call part and reject the next
+          // request if it is missing, so these parts are never rebuilt by hand.
           historyRef.current.push({
             role: "model",
-            parts: data.calls.map(
-              (c: { name: string; args: Record<string, unknown> }) => ({
+            parts:
+              data.modelParts ??
+              data.calls.map((c: { name: string; args: Record<string, unknown> }) => ({
                 functionCall: c,
-              })
-            ),
+              })),
           });
 
           const responseParts: Part[] = [];
           for (const c of data.calls) {
-            push("tool", `${c.name}(${JSON.stringify(c.args ?? {})})`);
+            // Some models namespace a call as default_api:tool_name.
+            const name = c.name.includes(":") ? c.name.split(":").pop()! : c.name;
+            push("tool", `${name}(${JSON.stringify(c.args ?? {})})`);
             let raw: string;
             try {
-              raw = await callToolThroughBridge(c.name, c.args ?? {});
+              raw = await callToolThroughBridge(name, c.args ?? {});
             } catch (err) {
               raw = JSON.stringify({
                 refused: true,
@@ -127,6 +132,8 @@ export default function AgentPanel() {
             } catch {
               parsed = { result: raw };
             }
+            // The response is keyed by the name the model used, namespace and
+            // all, so it can correlate the result with its own call.
             responseParts.push({
               functionResponse: { name: c.name, response: parsed },
             });

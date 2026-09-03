@@ -38,6 +38,12 @@ interface GeminiPart {
   text?: string;
   functionCall?: { name: string; args: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
+  /**
+   * Thinking models attach a signature to every function call part and reject
+   * the next turn if it does not come back. The field is never read here, only
+   * carried, which is why the raw parts are returned to the client untouched.
+   */
+  thoughtSignature?: string;
 }
 
 interface GeminiContent {
@@ -140,6 +146,10 @@ export async function POST(request: Request) {
       calls,
       text,
       model,
+      // The client appends these to the transcript exactly as they arrived.
+      // Reconstructing them from `calls` would drop the thought signature and
+      // the next request would be rejected.
+      modelParts: parts,
     });
   }
 
