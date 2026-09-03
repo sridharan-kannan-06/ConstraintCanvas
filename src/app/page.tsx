@@ -114,6 +114,12 @@ export default function Home() {
       </div>
 
       <RuleCapture />
+
+      <div className="narrow-notice">
+        ConstraintCanvas is built for a desktop window. Below about 1100 px the
+        canvas and the rulebook cannot both stay legible, so the page scrolls
+        sideways rather than reflowing. Widen the window for the intended layout.
+      </div>
     </div>
   );
 }
