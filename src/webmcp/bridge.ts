@@ -146,10 +146,30 @@ function wrap(tool: (typeof TOOLS)[number]): ModelContextTool {
   };
 }
 
-let installed: AbortController | null = null;
+/**
+ * One abort controller per tool rather than one for the whole surface.
+ *
+ * Re-publishing a tool means withdrawing the old registration and adding the
+ * new one. Relying on a repeated name silently replacing the previous entry
+ * would be relying on behaviour that differs between the native
+ * implementation and the local stand-in, and the re-publish happens at the
+ * exact moment a human ratifies a rule, so it has to be predictable.
+ */
+const registrations = new Map<string, AbortController>();
+let installed = false;
 let currentMode: BridgeMode = "none";
 /** Signature of the rules currently baked into the proposal tool descriptions. */
 let describedRules = "";
+
+async function publish(
+  mc: ModelContext,
+  tool: (typeof TOOLS)[number]
+): Promise<void> {
+  registrations.get(tool.name)?.abort();
+  const controller = new AbortController();
+  registrations.set(tool.name, controller);
+  await mc.registerTool(wrap(tool), { signal: controller.signal });
+}
 
 function ruleSignature(): string {
   return getWorld()
@@ -173,13 +193,12 @@ export async function connectBridge(): Promise<void> {
     return;
   }
 
-  const controller = new AbortController();
-  installed = controller;
   const mc = document.modelContext;
   if (!mc) return;
+  installed = true;
 
   for (const tool of TOOLS) {
-    await mc.registerTool(wrap(tool), { signal: controller.signal });
+    await publish(mc, tool);
   }
   describedRules = ruleSignature();
 
@@ -211,11 +230,19 @@ export async function refreshToolDescriptions(): Promise<void> {
   const mc = document.modelContext;
   if (!mc) return;
 
-  // Registering the same name again replaces the previous definition.
   for (const tool of TOOLS) {
     if (tool.group !== "proposal") continue;
-    await mc.registerTool(wrap(tool), { signal: installed.signal });
+    await publish(mc, tool);
   }
+
+  // The surface is read back rather than assumed. If a re-publish ever left a
+  // tool missing or duplicated, the count in the header would say so instead
+  // of the page quietly claiming a contract it is no longer serving.
+  const registered = await mc.getTools();
+  setBridge(
+    currentMode,
+    registered.map((t) => t.name)
+  );
 
   const count = getWorld().rules.filter(
     (r) => r.enabled && r.source !== "builtin"
@@ -225,13 +252,15 @@ export async function refreshToolDescriptions(): Promise<void> {
     "app",
     `Re-published propose_changes and optimise_layout with ${count} human authored rule${
       count === 1 ? "" : "s"
-    } in the contract.`
+    } in the contract.`,
+    { detail: `${registered.length} tools on the surface.` }
   );
 }
 
 export function disconnectBridge() {
-  installed?.abort();
-  installed = null;
+  for (const controller of registrations.values()) controller.abort();
+  registrations.clear();
+  installed = false;
   currentMode = "none";
   describedRules = "";
   setBridge("none", []);
