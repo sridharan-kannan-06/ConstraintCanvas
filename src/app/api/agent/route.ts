@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { contents?: GeminiContent[]; tools?: unknown[] };
+  let body: { contents?: GeminiContent[]; tools?: unknown[]; model?: string };
   try {
     body = await request.json();
   } catch {
@@ -83,12 +83,32 @@ export async function POST(request: Request) {
     tools: functionDeclarations.length
       ? [{ functionDeclarations }]
       : undefined,
-    generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
+    generationConfig: {
+      temperature: 0.2,
+      // Thinking models spend output tokens on reasoning before they emit a
+      // function call or a word of text. A low cap here does not produce a
+      // short answer, it produces an empty candidate with finishReason
+      // MAX_TOKENS partway through a tool loop.
+      maxOutputTokens: 8192,
+    },
   };
 
-  const models = process.env.GEMINI_MODEL
-    ? [process.env.GEMINI_MODEL, ...MODEL_FALLBACKS]
-    : MODEL_FALLBACKS;
+  /*
+   * A conversation has to stay on one model.
+   *
+   * Availability varies request by request, so re-running the fallback chain
+   * every turn lets a single tool loop drift from one model to another
+   * mid-conversation. Thought signatures are minted per model, so replaying
+   * one to a different model returns an empty candidate and the loop dies
+   * with nothing to show for it. Once the client knows which model answered,
+   * it sends that back and it is the only one tried.
+   */
+  const pinned = body.model;
+  const models = pinned
+    ? [pinned]
+    : process.env.GEMINI_MODEL
+      ? [process.env.GEMINI_MODEL, ...MODEL_FALLBACKS]
+      : MODEL_FALLBACKS;
 
   let lastError = "The model could not be reached.";
 
@@ -128,9 +148,15 @@ export async function POST(request: Request) {
     }
 
     const candidate = (
-      data as { candidates?: Array<{ content?: GeminiContent }> } | null
+      data as {
+        candidates?: Array<{ content?: GeminiContent; finishReason?: string }>;
+        usageMetadata?: Record<string, number>;
+      } | null
     )?.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
+    const finishReason = candidate?.finishReason;
+    const usage = (data as { usageMetadata?: Record<string, number> } | null)
+      ?.usageMetadata;
 
     const calls = parts
       .filter((p) => p.functionCall)
@@ -141,11 +167,31 @@ export async function POST(request: Request) {
       .join("")
       .trim();
 
+    // An empty candidate is not an answer. Say which limit was hit rather than
+    // letting the client fall back to a generic line that hides the cause.
+    if (calls.length === 0 && !text) {
+      const detail =
+        finishReason === "MAX_TOKENS"
+          ? "The model ran out of output tokens partway through the tool loop. Ask again with a narrower request."
+          : finishReason && finishReason !== "STOP"
+            ? `The model stopped early with finishReason ${finishReason}.`
+            : "The model returned an empty response.";
+      return NextResponse.json({
+        kind: "error",
+        message: detail,
+        finishReason,
+        usage,
+        model,
+      });
+    }
+
     return NextResponse.json({
       kind: calls.length > 0 ? "calls" : "text",
       calls,
       text,
       model,
+      finishReason,
+      usage,
       // The client appends these to the transcript exactly as they arrived.
       // Reconstructing them from `calls` would drop the thought signature and
       // the next request would be rejected.

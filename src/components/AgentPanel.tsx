@@ -74,6 +74,9 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const historyRef = useRef<Content[]>([]);
+  // Whichever model answered first stays with this conversation, so thought
+  // signatures are never replayed to a model that did not mint them.
+  const modelRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
 
@@ -136,9 +139,14 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
         const res = await fetch("/api/agent", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ contents: historyRef.current, tools }),
+          body: JSON.stringify({
+            contents: historyRef.current,
+            tools,
+            model: modelRef.current ?? undefined,
+          }),
         });
         const data = await res.json();
+        if (data.model) modelRef.current = data.model;
 
         if (data.kind === "error") {
           push("assistant", data.message);
@@ -221,6 +229,7 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
             onClick={() => {
               setBubbles([]);
               historyRef.current = [];
+              modelRef.current = null;
             }}
             disabled={busy}
           >
