@@ -3,12 +3,9 @@ import { evaluateWorld } from "./rules";
 import type { AppState } from "./store";
 
 /**
- * Exporting the plan.
- *
- * The point of the JSON export is not the geometry, which any planner can
- * redraw. It is the rulebook, with each rule carrying the rejection that
- * produced it. That file is the reusable part: a written specification of the
- * judgment the human applied during the session.
+ * Plan export. The geometry is the smaller half of what is worth keeping. The
+ * rulebook, with each rule carrying the rejection that produced it, is a
+ * written record of the judgment applied during the session.
  */
 export function buildPlanExport(state: AppState) {
   const { world } = state;
@@ -107,11 +104,9 @@ export function exportPlanJson(state: AppState) {
 }
 
 /**
- * Serialises the live canvas to a standalone SVG.
- *
- * The canvas paints with CSS custom properties, which mean nothing once the
- * markup leaves the page, so every var() reference is resolved against the
- * computed root style and the handful of text styles are inlined.
+ * Serialises the live canvas to a standalone SVG. Custom properties mean
+ * nothing once the markup leaves the page, so every var() reference is
+ * resolved against the computed root style and text styles are inlined.
  */
 export function exportDrawingSvg(state: AppState) {
   const source = document.getElementById("floor-canvas");

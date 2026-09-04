@@ -33,10 +33,9 @@ const SUGGESTIONS = [
 ];
 
 /**
- * Renders the small amount of markdown a model reaches for unprompted: bold
- * runs and inline code. Anything else is left as plain text. This is a
- * formatter, not a parser, and it exists only so that answers quoting a rule
- * do not arrive full of visible asterisks.
+ * Renders bold runs and inline code. Anything else is left as plain text.
+ * A formatter rather than a parser, so replies quoting a rule do not arrive
+ * full of visible asterisks.
  */
 function formatted(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
@@ -55,19 +54,16 @@ function formatted(text: string) {
   });
 }
 
-/**
- * The built-in agent.
- *
- * Every tool call is executed here in the page through
- * document.modelContext.executeTool, the same entry point an external agent
- * uses. The model itself runs behind an API route so the key stays server
- * side. Nothing about the tool contract changes between the two paths.
- */
 interface Props {
   expanded: boolean;
   onToggleExpand: () => void;
 }
 
+/**
+ * In-page agent. Tool calls run through document.modelContext.executeTool,
+ * the same entry point an external agent uses, with the model behind an API
+ * route so the key stays server side.
+ */
 export default function AgentPanel({ expanded, onToggleExpand }: Props) {
   const state = useAppState();
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
@@ -75,17 +71,14 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const historyRef = useRef<Content[]>([]);
-  // Whichever model answered first stays with this conversation, so thought
-  // signatures are never replayed to a model that did not mint them.
+  // Whichever model answered first stays with this conversation, so a
+  // signature is never replayed to a model that did not mint it.
   const modelRef = useRef<string | null>(null);
   /*
    * Results already served in this conversation, keyed by tool and arguments.
-   *
-   * Models re-read the floor plan and the rulebook between steps out of
-   * caution. The tool call itself is free, but the round trip that follows it
-   * is not, and the free tier allows only twenty a day per model. Replaying
-   * the identical answer with a nudge to get on with it keeps a plan inside
-   * two or three requests instead of six.
+   * The tool call itself is local, but the round trip that follows it is not,
+   * so repeating an unchanged answer keeps a plan inside two or three
+   * requests rather than six.
    */
   const seenRef = useRef<Map<string, string>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -116,11 +109,9 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
         | { type?: string; properties?: Record<string, unknown>; required?: string[] }
         | undefined;
 
-      // Prefer the schema the surface hands back, since that is what an
-      // external agent would receive. Fall back to the local descriptor when
-      // the surface returns nothing usable, because a tool whose enum went
-      // missing gets called with invented arguments and the agent then burns
-      // its turns guessing at shapes rather than planning.
+      // Prefer the schema the surface returns, since that is what an external
+      // agent receives. Fall back to the local descriptor when it returns
+      // nothing usable, so a tool never loses its enum in transit.
       const local = TOOLS.find((c) => c.name === t.name)?.inputSchema as
         | { properties?: Record<string, unknown> }
         | undefined;
@@ -170,9 +161,8 @@ export default function AgentPanel({ expanded, onToggleExpand }: Props) {
         }
 
         if (data.kind === "calls" && data.calls?.length) {
-          // Echo the model turn back exactly as it arrived. Thinking models
-          // attach a signature to each function call part and reject the next
-          // request if it is missing, so these parts are never rebuilt by hand.
+          // Echoed back exactly as received. Each function call part carries
+          // a signature the next request is rejected without.
           historyRef.current.push({
             role: "model",
             parts:

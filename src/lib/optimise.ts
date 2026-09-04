@@ -91,13 +91,9 @@ function candidatePositions(
 }
 
 /**
- * The set of coordinates an existing run of furniture implies along one axis.
- *
- * Takes the positions already in use, works out the pitch they repeat at, and
- * extends that rhythm to the edges of the floor. A new row at 16 continues a
- * block sitting at 7, 10 and 13. A row at 15 does not, even though it breaks
- * no rule, and that is exactly the sort of thing a human notices immediately
- * and an optimiser scoring only clearance never will.
+ * The coordinates an existing run of furniture implies along one axis. Takes
+ * the positions in use, works out the pitch they repeat at, and extends it to
+ * the edges of the floor. A block at 7, 10 and 13 implies a row at 16.
  */
 function lattice(values: number[], limit: number): Set<number> {
   const half = (v: number) => Math.round(v * 2) / 2;
@@ -144,12 +140,9 @@ function latticesFor(
 }
 
 /**
- * Scores a valid position. Lower is better.
- *
- * The intent is a plan a human would recognise as tidy rather than a
- * mathematically optimal one. Seating clusters near existing seating and
- * faces the stage. There is no solver here on purpose, because the demo is
- * about whether the rules hold, not about packing efficiency.
+ * Scores a valid position, lower being better. The goal is a layout that
+ * reads as tidy rather than one that is optimally packed, so there is no
+ * solver here by design.
  */
 function scorePosition(
   probe: FloorObject,
@@ -164,21 +157,14 @@ function scorePosition(
 
   let score = 0;
 
-  /*
-   * Alignment dominates everything else.
-   *
-   * A plan that is merely legal still looks wrong if the new tables sit
-   * between the existing rows. Sharing a row or a column with furniture of the
-   * same kind is what makes an addition read as a continuation of the layout
-   * rather than as clutter dropped into the gaps, and it is the first thing a
-   * human notices about a proposal.
-   */
+  // Alignment dominates the rest of the score. A legal placement still looks
+  // wrong if it sits between the existing rows rather than continuing them.
   const half = (v: number) => Math.round(v * 2) / 2;
   if (!lattices.xs.has(half(probe.x))) score += 12;
   if (!lattices.ys.has(half(probe.y))) score += 12;
 
-  // Sharing a coordinate with something already placed beats merely sitting on
-  // the implied rhythm, so a block fills out before it starts a new run.
+  // Sharing a coordinate with something already placed beats sitting on the
+  // implied rhythm alone, so a block fills out before starting a new run.
   const aligns = (a: number, b: number) => Math.abs(a - b) < 0.05;
   if (!sameKind.some((o) => aligns(o.x, probe.x))) score += 3;
   if (!sameKind.some((o) => aligns(o.y, probe.y))) score += 3;
@@ -224,11 +210,9 @@ function maximiseSeating(
   const working = [...world.objects];
   const changes: ChangeOp[] = [];
   const notes: string[] = [];
-  // This pass only ever adds objects, and every rule it can break is monotone
-  // under addition: a position that overlaps, crowds, blocks an exit, eats the
-  // circulation budget or seals off an egress route cannot be rescued by
-  // putting more furniture on the floor. So a candidate rejected in one round
-  // stays rejected, and dropping it saves rescanning it in every later round.
+  // This pass only adds objects, and every rule it can break is monotone under
+  // addition, so a candidate rejected in one round stays rejected. Dropping it
+  // avoids rescanning it in every later round.
   let positions = candidatePositions(world.floor, kind, 1);
   let placed = 0;
   let seatsAdded = 0;
@@ -237,8 +221,7 @@ function maximiseSeating(
     // The floor only changes between rounds, so the baseline is computed here
     // rather than inside the scan over several hundred candidate positions.
     const baseline = baselineKeys(working, world.floor, world.rules);
-    // Recomputed each round so the rhythm accounts for what has just been
-    // added, which keeps a run growing in one direction.
+    // Recomputed each round so the rhythm accounts for what was just added.
     const lattices = latticesFor(working, kind, world.floor);
     let best: { x: number; y: number; score: number } | null = null;
     const survivors: Array<{ x: number; y: number }> = [];

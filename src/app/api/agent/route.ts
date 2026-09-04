@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 
 /**
- * Thin server proxy for the built-in agent panel.
- *
- * The key never reaches the browser, and the route holds no conversation
- * state. The client owns the transcript and, crucially, executes every tool
+ * Server proxy for the in-page agent panel. Holds the API key and no
+ * conversation state. The client owns the transcript and executes every tool
  * itself through document.modelContext, so the model reaches the floor plan
- * only by the same WebMCP surface an external agent would use.
+ * only through the same surface an external agent would use.
  */
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -44,9 +42,8 @@ interface GeminiPart {
   functionCall?: { name: string; args: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
   /**
-   * Thinking models attach a signature to every function call part and reject
-   * the next turn if it does not come back. The field is never read here, only
-   * carried, which is why the raw parts are returned to the client untouched.
+   * Reasoning models attach a signature to each function call part and reject
+   * the next turn without it. Carried through, never read.
    */
   thoughtSignature?: string;
 }
@@ -90,29 +87,16 @@ export async function POST(request: Request) {
       : undefined,
     generationConfig: {
       temperature: 0.2,
-      // Thinking models spend output tokens on reasoning before they emit a
-      // function call or a word of text. A low cap here does not produce a
-      // short answer, it produces an empty candidate with finishReason
-      // MAX_TOKENS partway through a tool loop.
+      // Reasoning tokens count against this cap, so a low value truncates the
+      // turn before any call or text is emitted rather than shortening it.
       maxOutputTokens: 8192,
     },
   };
 
   /*
-   * A conversation has to stay on one model.
-   *
-   * Availability varies request by request, so re-running the fallback chain
-   * every turn lets a single tool loop drift from one model to another
-   * mid-conversation. Thought signatures are minted per model, so replaying
-   * one to a different model returns an empty candidate and the loop dies
-   * with nothing to show for it. Once the client knows which model answered,
-   * it sends that back and it is the only one tried.
-   */
-  /*
-   * Switching model is only safe before the model has produced a thought
-   * signature. Once one exists in the transcript it has to go back to the
-   * model that minted it, so a rate limited conversation waits rather than
-   * hopping. A fresh one is free to try elsewhere.
+   * Signatures are minted per model, so a transcript containing one must go
+   * back to the model that produced it. A conversation with no signature yet
+   * is free to try the rest of the chain.
    */
   const hasSignature = (body.contents ?? []).some((c) =>
     (c.parts ?? []).some((p) => typeof p.thoughtSignature === "string")
@@ -174,7 +158,7 @@ export async function POST(request: Request) {
           )
         );
         // Another model may still have quota, but only a conversation with no
-        // signatures yet can be moved. Otherwise the honest answer is to wait.
+        // signature yet can be moved.
         if (!hasSignature && models.indexOf(model) < models.length - 1) {
           lastError = `${model} is rate limited.`;
           continue;
@@ -216,8 +200,8 @@ export async function POST(request: Request) {
       .join("")
       .trim();
 
-    // An empty candidate is not an answer. Say which limit was hit rather than
-    // letting the client fall back to a generic line that hides the cause.
+    // An empty candidate is not an answer. Report which limit was reached
+    // rather than letting the client show a generic failure.
     if (calls.length === 0 && !text) {
       const detail =
         finishReason === "MAX_TOKENS"
@@ -241,9 +225,8 @@ export async function POST(request: Request) {
       model,
       finishReason,
       usage,
-      // The client appends these to the transcript exactly as they arrived.
-      // Reconstructing them from `calls` would drop the thought signature and
-      // the next request would be rejected.
+      // Appended to the transcript verbatim. Rebuilding them from `calls`
+      // would drop the signature and the next request would be rejected.
       modelParts: parts,
     });
   }

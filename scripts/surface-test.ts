@@ -1,10 +1,8 @@
-// Model context compatibility test. Run with: npm run surface
+// Model context compatibility tests. Run with: npm run surface
 //
-// The specification describes ModelContext as an EventTarget carrying
-// getTools and executeTool. A shipping implementation is not obliged to
-// expose all of it, and at least one exposes registerTool and little else.
-// Calling a missing method from inside a React effect blanks the whole page,
-// so these checks pin the behaviour against deliberately minimal surfaces.
+// The specification describes ModelContext as an EventTarget carrying getTools
+// and executeTool, but an implementation is not obliged to expose all of it.
+// These checks pin the behaviour against deliberately minimal surfaces.
 
 import { safeGetTools, subscribeToolChange } from "../src/webmcp/bridge";
 import { TOOLS } from "../src/webmcp/tools";
@@ -23,7 +21,7 @@ function withSurface(surface: unknown) {
 }
 
 async function run() {
-  // 1. The surface ChatGPT's browser appears to expose: registerTool only.
+  // 1. A surface exposing registerTool and nothing else.
   withSurface({ registerTool: async () => {} });
 
   let threw = false;

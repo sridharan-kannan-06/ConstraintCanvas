@@ -3,13 +3,8 @@
 import { useEffect } from "react";
 
 /**
- * Last line of defence.
- *
- * An agent browser can expose a model context that differs from the one this
- * app was written against, and an unguarded call to a missing method inside a
- * React effect will otherwise blank the page entirely. A judge who sees
- * nothing has no way to tell a crash apart from a bad deploy, so a crash says
- * what happened and offers a way back in.
+ * Error boundary. A render failure otherwise leaves a blank page, which gives
+ * no way to tell a crash apart from a failed deploy.
  */
 export default function Error({
   error,

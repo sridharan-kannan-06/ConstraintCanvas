@@ -1,19 +1,19 @@
-# How WebMCP is implemented
+# Implementation notes
 
-This document covers the mechanics. The product argument lives in the [README](../README.md).
+How the WebMCP integration and the constraint engine work. The product overview is in the [README](../README.md).
 
 ## Platform requirements
 
-`document.modelContext` does not exist unless two conditions hold. Both are response headers, set in [next.config.ts](../next.config.ts):
+`document.modelContext` does not exist unless two response headers are set, both in [next.config.ts](../next.config.ts):
 
 ```ts
 { key: "Origin-Agent-Cluster", value: "?1" }
 { key: "Permissions-Policy", value: "tools=(self)" }
 ```
 
-WebMCP is only exposed in origin isolated documents, and both the imperative and declarative APIs are gated behind the `tools` Permissions Policy. Miss either one and registration fails silently, which is the single most common way an integration appears broken for no visible reason. Getting these in place was the first commit in this repository, before any product code.
+The API is only exposed in origin isolated documents, and it is gated behind the `tools` Permissions Policy. Missing either one makes registration fail with no error, which is an easy way to lose an afternoon.
 
-## Where tools are defined
+## Where tools live
 
 Tools are described once, as plain data, in [src/webmcp/tools.ts](../src/webmcp/tools.ts):
 
@@ -29,98 +29,85 @@ export interface CanvasTool {
 }
 ```
 
-Keeping a local descriptor rather than calling `registerTool` inline buys three things. Logging happens in one place. The tool inspector panel can render the surface from the same source of truth. And the built-in agent panel and an external browser agent run through identical code.
+Keeping a descriptor rather than registering inline puts logging in one place, lets the Tools panel render from the same source, and means the in-page agent and a browser agent run identical code.
 
-## Registration
+[src/webmcp/bridge.ts](../src/webmcp/bridge.ts) registers them, wrapping each `execute` so every call and refusal is logged at the boundary rather than inside individual tools. Each tool owns an `AbortController`, so a re-publish can withdraw the old registration before adding the new one instead of relying on name replacement, which is implementation defined.
 
-[src/webmcp/bridge.ts](../src/webmcp/bridge.ts) registers the surface:
+## Varying implementations
 
-```ts
-await document.modelContext.registerTool(
-  {
-    name: tool.name,
-    title: tool.title,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-    annotations: { readOnlyHint: tool.readOnly },
-    execute: async (rawInput) => { /* log, run, log refusals, stringify */ },
-  },
-  { signal: controller.signal }
-);
-```
+The specification describes `ModelContext` as an `EventTarget` carrying `getTools` and `executeTool`, but implementations differ in how much of that they expose. One provides `registerTool` without `addEventListener`.
 
-Notes on the choices:
+So the only capability assumed is `registerTool`, and everything else is feature detected:
 
-**`annotations.readOnlyHint`** is set from the descriptor. Six tools carry it: the five inspection tools and `explain_placement`, which answers questions without touching anything. The three that reach the proposal or authoring path do not.
+| Capability | Fallback |
+| :-- | :-- |
+| `addEventListener` | the `ontoolchange` property, then nothing |
+| `getTools` | the local tool descriptors |
+| `executeTool` | running the descriptor directly |
+| `registerTool` for one tool | log it and continue with the rest |
 
-**`AbortController`** scopes the whole surface. One `controller.abort()` withdraws all nine tools, which is what `disconnectBridge` uses.
-
-**Return values are JSON strings.** `execute` returns a stringified object rather than prose. Agents get structured refusals with a machine readable `reason` field, the rule that was broken, the offending item and the numeric margin.
-
-**Logging is at the boundary.** The wrapper records a `tool_call` entry before running, and a `tool_refusal` entry when the result carries `refused: true`. Individual tools never touch the log, so no tool can forget to.
-
-## Dynamic re-registration
-
-The most interesting use of the API here is that the tool contract is not static.
-
-When the human ratifies a rule, `refreshToolDescriptions` re-registers the two proposal tools with the active human authored rules appended to their descriptions. Registering an existing name replaces the previous definition, and the surface fires `toolchange`, which the interface listens for to keep the Tools panel accurate.
-
-The effect is that correcting the agent narrows what the agent is told it can do, not just what the app will accept. An agent reading the surface after a correction learns the constraint from the tool definition rather than by being refused. The work is skipped when the rule signature has not moved, so there is no churn.
+`npm run surface` pins this against four minimal surfaces, since an unguarded call to a missing method inside a React effect unmounts the whole tree.
 
 ## The refusal contract
 
-Every refusal is actionable. A bare failure would leave an agent guessing.
+Every refusal names something the agent can act on.
 
 ```json
 {
   "refused": true,
   "reason": "RULE_VIOLATION",
-  "message": "Refused. The plan breaks the rule: No round table within 5.0 m of any exit.",
-  "broken_rule": { "id": "rule_11nvq0", "statement": "No round table within 5.0 m of any exit." },
-  "offending_item": "Place Round table at 8, 4.",
-  "margin": "Round table is 4.3 m from North exit, 0.7 m short of the 5.0 m the rule requires",
-  "next_step": "Read get_rulebook, adjust the offending placement, and submit again. The rule will not be relaxed for you."
+  "message": "Refused. The plan breaks the rule: No round table within 3.0 m of any exit.",
+  "broken_rule": { "id": "rule_11nvq0", "statement": "No round table within 3.0 m of any exit." },
+  "offending_item": "Place Round table at 8, 1.",
+  "margin": "Round table is 2.5 m from North exit, 0.5 m short of the 3.0 m the rule requires",
+  "next_step": "Read get_rulebook, move the offending placement clear of the rule, and submit again."
 }
 ```
 
-The four refusal reasons are `RULE_VIOLATION`, `LOCKED_OBJECT`, `PROPOSAL_PENDING` and `BAD_INPUT`.
+The reasons are `RULE_VIOLATION`, `LOCKED_OBJECT`, `PROPOSAL_PENDING`, `NO_VALID_PLAN` and `BAD_INPUT`. `next_step` is a required argument to the refusal helper rather than an optional extra, and a refusal that rejects a value also names the values that would be accepted.
 
 ## How validation decides
 
 `submitProposal` in [src/lib/store.ts](../src/lib/store.ts) runs three passes.
 
-1. **Locks first, and separately.** A locked object is not a rule that can be argued down, it is a hard boundary on the tool surface. Any move or remove targeting one is refused before anything else is evaluated.
-2. **Differential rule evaluation.** The floor is evaluated before and after the proposed changes, and only violations that did not already exist cause a refusal. Without this, a floor that already has one problem would refuse every plan forever, including the plans that fix it.
-3. **Preview, not mutation.** A surviving plan becomes a pending proposal. The objects on the floor are untouched until a human accepts an item.
+Locks are checked first and separately, because a locked object is a hard boundary rather than a rule to be argued down. Rules are then evaluated differentially, comparing violations before and after the change, so a floor that already has a problem does not refuse every plan including the ones that would fix it. A surviving plan becomes a pending preview, and the objects on the floor are untouched until someone accepts an item.
 
-Only one proposal can be pending at a time. A second submission is refused with `PROPOSAL_PENDING`, which keeps the human in the loop rather than letting an agent queue work behind an unanswered question.
+Only one proposal can be pending at a time. A second submission is refused with `PROPOSAL_PENDING` rather than queueing work behind an unanswered question.
 
 ## Rejection to rule
 
-When a human rejects a proposal item, [src/lib/derive.ts](../src/lib/derive.ts) produces ranked candidate rules rather than one guess.
-
-The ranking is opinionated. A rejection near an exit almost always means the exit rather than the coordinates, so that candidate leads. A rejection near a locked object usually means the locked object. Everything else falls back to the named region of the floor the human was pointing at.
+When an item is rejected, [src/lib/derive.ts](../src/lib/derive.ts) produces ranked candidates rather than one guess. A rejection near an exit usually means the exit rather than the coordinates, one near a locked object usually means that object, and anything else falls back to the region of the floor it landed in.
 
 Derived distances are floored so a new rule cannot land weaker than the built-in it would shadow. Rejecting something 1.0 m from an exit does not produce a 1.5 m rule that changes nothing, because the built-in already enforces 2.0 m.
 
-The same machinery backs `propose_rule`, which parses a plain language instruction into a candidate. Both paths end in the same confirmation dialog, and neither writes to the rulebook without a human tap.
+The same machinery backs `propose_rule`, which parses a plain language instruction into a candidate. Both paths end at the same confirmation dialog, and neither writes to the rulebook on its own.
 
-## The two surfaces
+## Dynamic re-registration
 
-An agent browser provides `document.modelContext`. When it is absent, [bridge.ts](../src/webmcp/bridge.ts) installs a local object of the same shape under the same name, implementing `registerTool`, `getTools`, `executeTool` and `toolchange`.
+Ratifying a rule calls `refreshToolDescriptions`, which re-registers the two proposal tools with the active authored rules appended to their descriptions and fires `toolchange`. An agent reading the surface after a correction learns the constraint from the tool definition rather than by being refused. The work is skipped when the rule signature has not moved.
 
-This is a development and demonstration convenience, not a claim. The header chip reads `WebMCP live` only when the browser supplied the object, and `WebMCP stand-in` when the page installed it. The built-in agent panel goes through `getTools` and `executeTool` in both cases, so the code path being demonstrated is the real one either way.
+## Egress and circulation
 
-## The built-in agent
+Two of the eight built-in rules need more than a distance check.
 
-The model runs behind [src/app/api/agent/route.ts](../src/app/api/agent/route.ts), which is stateless and holds only the API key. The browser owns the transcript and the tool loop:
+Egress path builds an occupancy grid at the floor's grid resolution, marking a cell blocked when its centre falls inside an object, then floods outward from the exits. A seated object passes if any free cell in the ring around its footprint was reached. Testing cell centres rather than any overlap keeps narrow but walkable gaps open, which matters because the clearance rule only guarantees 0.9 m.
 
-1. Client converts the published surface into function declarations with `document.modelContext.getTools()`.
-2. Client posts the transcript and declarations to the route.
-3. Route calls the model and returns either text or function calls.
-4. Client executes each call with `document.modelContext.executeTool()`.
-5. Client appends the results and loops, up to eight turns.
+Circulation holds the free share of the floor above a threshold, which gives seat maximisation a real ceiling rather than an unbounded one.
 
-The tools genuinely execute in the page through the WebMCP surface. The server never touches the floor plan and has no idea what a floor plan is.
+## Optimiser performance
 
-One detail worth recording: a function declaration with an empty `properties` map is rejected by the model API, so tools that take no arguments are sent with no `parameters` block at all.
+The optimiser scans several hundred candidate positions per placement and tests each against the full rulebook including the flood fill. Three things keep an eighty seat pass under a second on the larger floor.
+
+The baseline violation set is computed once per placement rather than once per candidate. Candidates are screened against the cheap rules first, so only survivors pay for the flood fill. And because a seat maximisation pass only adds objects, and every rule it can break is monotone under addition, a position rejected in one round is dropped rather than rescanned in the next.
+
+## Placement quality
+
+A plan can satisfy every rule and still look wrong, because new furniture landing between the existing rows reads as clutter. Scoring therefore works out the pitch a run of furniture repeats at, extends that rhythm to the edges of the floor, and heavily prefers positions on it, with a further preference for sharing a coordinate with something already placed so a block fills out before starting a new run.
+
+This is greedy placement with a scoring pass rather than a solver. The goal is a layout that reads as tidy, not one that is optimally packed.
+
+## The in-page agent
+
+The model runs behind [src/app/api/agent/route.ts](../src/app/api/agent/route.ts), which holds the key and no conversation state. The browser owns the transcript and the tool loop: it converts the published surface into function declarations with `getTools`, posts the transcript to the route, executes each returned call with `executeTool`, appends the results and loops.
+
+Three details are worth recording for anyone building something similar. A function declaration with an empty `properties` map is rejected, so tools taking no arguments are sent with no `parameters` block. Reasoning models attach a signature to each function call part and reject the next request without it, so model turns are echoed back verbatim rather than rebuilt. And signatures are minted per model, so a transcript containing one must return to the model that produced it.

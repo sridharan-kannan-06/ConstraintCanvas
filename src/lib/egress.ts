@@ -1,12 +1,10 @@
 import type { Floor, FloorObject } from "./types";
 
 /**
- * Occupancy and reachability on the floor grid.
- *
- * Straight line distance to an exit is not the same as being able to reach
- * one. A table can sit six metres from a door and still be walled in behind a
- * row of booths. This module answers the second question with a flood fill
- * outward from the exits, which is what the built-in egress path rule uses.
+ * Occupancy and reachability on the floor grid. Straight line distance to an
+ * exit is not the same as being able to reach one, since a table can sit six
+ * metres from a door and still be walled in behind a row of booths. A flood
+ * fill outward from the exits answers the second question.
  */
 
 export interface EgressGrid {
@@ -37,9 +35,9 @@ export function buildEgressGrid(
   const rows = Math.max(1, Math.round(floor.heightM / cell));
   const blocked = new Uint8Array(cols * rows);
 
-  // Only the cells an object could possibly touch are visited. The optimiser
-  // rebuilds this grid for every candidate position, so scanning the whole
-  // floor per object would dominate its running time.
+  // Only the cells an object could touch are visited. The optimiser rebuilds
+  // this grid per candidate position, so a full scan per object would dominate
+  // its running time.
   for (const o of objects) {
     if (o.kind === "exit") continue;
     const c0 = Math.max(0, Math.floor(o.x / cell));

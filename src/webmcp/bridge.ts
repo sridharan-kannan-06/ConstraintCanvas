@@ -2,14 +2,10 @@ import { getWorld, log, setBridge, type BridgeMode } from "@/lib/store";
 import { summariseCall, TOOLS } from "./tools";
 
 /**
- * A local stand-in for document.modelContext.
- *
- * WebMCP only exists in Chrome behind a flag and in agent browsers that ship
- * it. Rather than degrade to a different code path when it is absent, the app
- * installs this object under the same name and keeps the same call shape. The
- * built in agent panel therefore drives the site through getTools and
- * executeTool in every environment, and the UI reports plainly which of the
- * two is in use so nothing is overstated.
+ * Local implementation of the model context interface, installed when the
+ * browser does not provide one. Keeping the same shape under the same name
+ * means the in-page agent uses one code path in every environment. The header
+ * reports which of the two is active.
  */
 class ShimModelContext extends EventTarget {
   private registry = new Map<string, ModelContextTool>();
@@ -56,15 +52,10 @@ class ShimModelContext extends EventTarget {
 }
 
 /*
- * Everything below feature detects before it calls.
- *
- * The specification describes ModelContext as an EventTarget with getTools and
- * executeTool, but a shipping implementation does not have to expose all of
- * that, and one of them does not. Calling a method that is not there from
- * inside a React effect takes the whole page down, which is how this app
- * managed to render nothing at all in the one browser it most needed to work
- * in. So the contract is treated as a floor of registerTool, and every other
- * capability is optional.
+ * Implementations vary in how much of the interface they expose, so the only
+ * capability assumed here is registerTool. Everything else is feature
+ * detected, because an unguarded call to a missing method inside a React
+ * effect unmounts the tree.
  */
 
 /** Reads the surface, falling back to the local descriptors if it cannot. */
@@ -88,8 +79,8 @@ export async function safeGetTools(): Promise<RegisteredTool[]> {
 }
 
 /**
- * Subscribes to tool changes by whichever mechanism the surface offers, and
- * returns a cleanup function. Does nothing at all if it offers neither.
+ * Subscribes to tool changes by whichever mechanism the surface offers and
+ * returns a cleanup function. Does nothing if it offers neither.
  */
 export function subscribeToolChange(handler: () => void): () => void {
   const mc = document.modelContext;
@@ -141,14 +132,9 @@ function installShim(): BridgeMode {
 }
 
 /**
- * Renders the human authored rules as a block appended to the description of
- * the tools that can change the floor.
- *
- * This is the point of the whole project expressed in the tool contract. A
- * correction does not just change what the app will accept, it narrows what
- * the agent is told it is able to do, before it composes a single call. The
- * constraint arrives as part of the tool definition rather than as an error
- * the agent has to run into first.
+ * Renders the human authored rules as a block appended to the descriptions of
+ * the tools that can change the floor, so a constraint reaches the agent as
+ * part of the tool definition rather than as an error it runs into later.
  */
 function constraintBlock(): string {
   const authored = getWorld().rules.filter(
@@ -217,13 +203,10 @@ function wrap(tool: (typeof TOOLS)[number]): ModelContextTool {
 }
 
 /**
- * One abort controller per tool rather than one for the whole surface.
- *
- * Re-publishing a tool means withdrawing the old registration and adding the
- * new one. Relying on a repeated name silently replacing the previous entry
- * would be relying on behaviour that differs between the native
- * implementation and the local stand-in, and the re-publish happens at the
- * exact moment a human ratifies a rule, so it has to be predictable.
+ * One abort controller per tool rather than one for the whole surface, so a
+ * re-publish can withdraw the old registration before adding the new one.
+ * Whether a repeated name replaces the previous entry is implementation
+ * defined, so it is not relied on.
  */
 const registrations = new Map<string, AbortController>();
 let installed = false;

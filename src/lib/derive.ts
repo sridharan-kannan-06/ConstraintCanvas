@@ -11,8 +11,8 @@ import type {
 } from "./types";
 
 /**
- * A rule the app is offering to adopt. Nothing enters the rulebook until the
- * human confirms a candidate, so the agent can suggest but never legislate.
+ * A rule the app is offering to adopt. Nothing enters the rulebook until a
+ * candidate is confirmed, so the agent can suggest but never legislate.
  */
 export interface RuleCandidate {
   id: string;
@@ -51,12 +51,10 @@ function subjectOf(
 }
 
 /**
- * Turns a rejected proposal item into ranked candidate rules.
- *
- * The ranking is deliberately opinionated. A rejection near an exit almost
- * always means the exit, not the coordinates, so that candidate leads. A
- * rejection near a locked object usually means the locked object. Everything
- * else falls back to the region of the floor the human was pointing at.
+ * Turns a rejected proposal item into ranked candidate rules. The ranking is
+ * opinionated: a rejection near an exit usually means the exit rather than the
+ * coordinates, one near a locked object usually means that object, and
+ * anything else falls back to the region of the floor it landed in.
  */
 export function deriveCandidates(
   item: ProposalItem,
@@ -80,8 +78,8 @@ export function deriveCandidates(
     );
     const gap = rectGap(sr, rectOf(nearest));
     if (gap < 6) {
-      // A derived exit rule that lands below the built-in 2.0 m radius would be
-      // a rule that changes nothing, so the floor is set above it.
+      // A derived rule below the built-in 2.0 m radius would change nothing,
+      // so the minimum is set above it.
       const meters = Math.max(2.5, roundUpHalf(gap + 0.5));
       out.push({
         id: "cand_exit",
@@ -109,8 +107,8 @@ export function deriveCandidates(
     );
     const gap = rectGap(sr, rectOf(nearest));
     if (gap < 8) {
-      // Enough headroom that the new rule visibly bites rather than restating
-      // the 0.9 m clearance the app already enforces.
+      // Enough headroom that the rule bites rather than restating the 0.9 m
+      // clearance already enforced.
       const meters = Math.max(1.5, roundUpHalf(gap + 1));
       out.push({
         id: "cand_anchor",

@@ -1,6 +1,8 @@
-// Engine smoke test. Run with: npm run smoke
-// Verifies the shipped scenario is clean, the optimiser respects the rulebook,
-// and a rejection derives a rule that then blocks the same placement.
+// Engine tests. Run with: npm run smoke
+//
+// Covers the shipped scenarios loading clean, the optimiser respecting the
+// rulebook, and a rejection deriving a rule that then blocks the placement
+// that produced it.
 
 import { deriveCandidates } from "../src/lib/derive";
 import { computeMetrics } from "../src/lib/metrics";
@@ -100,9 +102,9 @@ if (zoneCandidate) {
     !checkPlacement(legal, withRule.objects, withRule.floor, withRule.rules).ok
   );
 
-  // A newly ratified rule can reveal that existing furniture already breaks it.
-  // Those are shown to the human rather than silently corrected, so the test
-  // compares against that baseline instead of expecting a clean floor.
+  // A new rule can reveal that existing furniture already breaks it. Those are
+  // reported rather than silently corrected, so this compares against that
+  // baseline instead of expecting a clean floor.
   const baseline = evaluateWorld(withRule).length;
   check(
     "the new rule surfaces existing furniture that already breaks it",
@@ -181,7 +183,7 @@ check(
 );
 
 // The optimiser runs on the main thread, so a slow pass freezes the interface.
-// Both scenarios are timed because the larger floor costs noticeably more.
+// Both scenarios are timed because the larger floor costs more.
 for (const scenario of SCENARIOS) {
   const started = Date.now();
   optimise(scenario.build(), "maximise_seating", { targetSeats: 80 });
@@ -193,8 +195,8 @@ for (const scenario of SCENARIOS) {
   );
 }
 
-// Every shipped scenario must load clean. A preloaded floor that already
-// breaks a rule would make the violation display meaningless on first sight.
+// Every shipped scenario must load clean, since a preloaded floor that already
+// breaks a rule makes the violation display meaningless on first sight.
 for (const scenario of SCENARIOS) {
   const w = scenario.build();
   const v = evaluateWorld(w);
@@ -210,8 +212,8 @@ for (const scenario of SCENARIOS) {
   );
 }
 
-// Placement tidiness. A plan can satisfy every rule and still look wrong if
-// the new tables land between the existing rows rather than continuing them.
+// A plan can satisfy every rule and still look wrong if the new tables land
+// between the existing rows rather than continuing them.
 const tidy = optimise(world, "maximise_seating", { targetSeats: 40 });
 const existingTables = world.objects.filter((o) => o.kind === "round_table");
 const added = tidy.changes.filter((c) => c.op === "add") as Array<{

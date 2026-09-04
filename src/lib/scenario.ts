@@ -39,9 +39,8 @@ export interface ScenarioDef {
 }
 
 /**
- * Willowmere Hall, a wedding reception, half planned.
- * The west side is laid out. The east side is deliberately left open so an
- * agent has real work to do, and so the demo has somewhere to put new seating.
+ * Willowmere Hall, a wedding reception, half planned. The west side is laid
+ * out and the east side is left open, so there is real work for an agent to do.
  */
 function buildWillowmere(): WorldState {
   const objects: FloorObject[] = [];
@@ -56,10 +55,9 @@ function buildWillowmere(): WorldState {
   objects.push(makeObject("bar", 1, 3.5, { label: "Champagne bar" }));
 
   let table = 0;
-  // A three metre pitch on whole metres. The gap between neighbours is 1.2 m,
-  // comfortably past the 0.9 m clearance rule, and every position sits on the
-  // lattice the optimiser scans, so anything it adds lines up with what is
-  // already here instead of landing between rows.
+  // A three metre pitch on whole metres. Neighbours sit 1.2 m apart, past the
+  // 0.9 m clearance rule, and every position falls on the lattice the
+  // optimiser scans so additions line up with what is already here.
   for (const y of [7, 10, 13]) {
     for (const x of [2, 5, 8, 11]) {
       table += 1;
@@ -85,12 +83,9 @@ function buildWillowmere(): WorldState {
 }
 
 /**
- * Kestrel Convention Centre, a tech conference expo hall.
- *
- * A larger and busier floor than the wedding. Three exits instead of two, two
- * blocks of exhibitor booths, marked aisles, and banquet seating in the south
- * half. It exists to show the rules holding on a floor where there is much
- * less slack, and to give the egress path rule something to chew on.
+ * Kestrel Convention Centre, a conference expo hall. Larger and busier than
+ * the wedding floor: three exits, two blocks of exhibitor booths, marked
+ * aisles and banquet seating, with much less slack for the rules to work in.
  */
 function buildKestrel(): WorldState {
   const objects: FloorObject[] = [];

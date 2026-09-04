@@ -39,8 +39,8 @@ const BRIDGE_COPY: Record<string, { label: string; title: string }> = {
 export default function Home() {
   const state = useAppState();
   const [armed, setArmed] = useState<ObjectKind | null>(null);
-  // Dock height in pixels. Draggable, and the expand control snaps between a
-  // reading height and the working height so the canvas is never lost entirely.
+  // Dock height in pixels. Draggable, with the expand control snapping between
+  // a working height and a reading height.
   const [dockHeight, setDockHeight] = useState(260);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
   const expanded = dockHeight > 460;
@@ -64,15 +64,13 @@ export default function Home() {
   }, []);
 
   // When the rulebook changes, re-publish the tools that can change the floor
-  // so their descriptions carry the narrowed contract. An agent reading the
-  // surface after a correction is told about the rule rather than discovering
-  // it by being refused.
+  // so their descriptions carry the current constraints.
   useEffect(() => {
     void refreshToolDescriptions();
   }, [state.world.rules]);
 
-  // toolchange is the right signal for keeping the Tools panel honest, but not
-  // every surface offers it, so the subscription is feature detected.
+  // Not every surface offers toolchange, so the subscription is feature
+  // detected.
   useEffect(() => subscribeToolChange(() => void syncTools()), []);
 
   // Briefly outline whatever the human just accepted, then clear the marker.

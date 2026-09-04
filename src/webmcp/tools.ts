@@ -15,11 +15,9 @@ import {
 import type { ChangeOp, ObjectKind } from "@/lib/types";
 
 /**
- * A tool as ConstraintCanvas defines it, before it reaches the browser.
- *
- * Keeping our own descriptor rather than registering inline gives us one place
- * to log every call, and lets the in page agent and the browser agent run
- * through identical code.
+ * A tool as this app defines it, before it reaches the browser. Keeping a
+ * descriptor rather than registering inline puts logging in one place and lets
+ * the in-page agent and a browser agent run through identical code.
  */
 export interface CanvasTool {
   name: string;
@@ -37,13 +35,9 @@ function ok(payload: unknown) {
 }
 
 /**
- * Every refusal has to leave the agent somewhere to go.
- *
- * A message on its own is a dead end. An agent that is told only "Unknown
- * objective" has no way to discover what a known one looks like, and will
- * burn its remaining turns guessing at argument shapes. So next_step is a
- * required argument here rather than an optional extra, and refusals that
- * reject a value are expected to name the values that would be accepted.
+ * Every refusal has to leave the agent somewhere to go, so next_step is a
+ * required argument rather than an optional extra. A refusal that rejects a
+ * value should also name the values that would be accepted.
  */
 function refuse(
   message: string,
@@ -69,10 +63,9 @@ const OBJECTIVES: Objective[] = [
 ];
 
 /**
- * Resolves the objective argument, accepting the enum but also the plain
- * language an agent tends to pass when it is relaying a human request
- * verbatim. Anything inferred is reported back so the interpretation is
- * visible rather than silent.
+ * Resolves the objective argument, accepting the enum and also the plain
+ * language an agent passes when relaying a request verbatim. Anything inferred
+ * is reported back so the interpretation is visible rather than silent.
  */
 function resolveObjective(raw: unknown): {
   objective: Objective | null;

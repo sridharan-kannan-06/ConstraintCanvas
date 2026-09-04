@@ -838,9 +838,8 @@
 }
 
 /*
-  A tool call is one line, not a bubble. A single request can fire eight of
-  them, and at two lines each the model's actual answer was being pushed off
-  the bottom of the panel.
+  A tool call is one line rather than a bubble. A single request can fire
+  eight of them, and at two lines each they crowd out the answer.
 */
 
 .tool-call {
@@ -1035,9 +1034,9 @@
 }
 
 /*
-  Desktop only by design. Rather than reflow into something unusable, the
-  layout keeps a floor and the page scrolls, with a notice on very narrow
-  viewports explaining why.
+  Desktop only by design. The layout keeps a minimum width and the page
+  scrolls rather than reflowing into something unusable, with a notice on
+  narrow viewports explaining why.
 */
 
 .shell {

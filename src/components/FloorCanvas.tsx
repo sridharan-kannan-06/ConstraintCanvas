@@ -18,12 +18,7 @@ interface Ghost {
   key: string;
   kind: ObjectKind;
   label: string;
-  /**
-   * What actually gets drawn on the shape. A proposal of five tables writes
-   * five copies of "Round table (proposed 3)" across a floor where each one is
-   * 1.8 m wide, and they collide with each other and with the furniture
-   * underneath. The tray carries the full wording.
-   */
+  /** Short form drawn on the shape. Full wording lives in the proposal tray. */
   short: string;
   rect: Rect;
   mode: "add" | "move";
@@ -120,11 +115,7 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
     [rules]
   );
 
-  /*
-   * Clearance rules are drawn as haloes around the object they protect. A rule
-   * the human just ratified therefore becomes visible geometry on the floor
-   * rather than a line of text in a panel somewhere.
-   */
+  /* Clearance rules drawn as haloes around the object they protect. */
   const haloes = useMemo(() => {
     const out: Array<{
       key: string;
@@ -397,9 +388,9 @@ export default function FloorCanvas({ armed, onPlaced }: Props) {
           const y = o.y * scale;
           const w = o.w * scale;
           const h = o.h * scale;
-          // Circles carry their text in the middle, rectangles in the top left.
-          // A round table is only 1.8 m across, so a top left label sits half
-          // outside the shape and collides with its neighbour.
+          // Circles carry their text in the middle, rectangles in the top
+          // left. A round table is 1.8 m across, so a top left label would sit
+          // half outside the shape.
           const isCircle = spec.shape === "circle";
           const showLabel = isCircle ? w > 34 : w > 46 && h > 22;
           const textX = isCircle ? x + w / 2 : x + 4;

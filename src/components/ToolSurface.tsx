@@ -16,11 +16,8 @@ const GROUPS = ["inspection", "proposal", "explanation", "authoring"];
 
 /**
  * Lists the tools this page publishes, grouped the way the agent sees them.
- *
  * Descriptions are read back off the live surface rather than from the local
- * descriptors, so the panel shows the contract as it currently stands. The
- * proposal tools carry the human authored rules in their own description, and
- * this is where you can watch that text grow.
+ * descriptors, so the panel shows the contract as it currently stands.
  */
 export default function ToolSurface() {
   const state = useAppState();

@@ -19,9 +19,9 @@ import type {
 } from "./types";
 
 /**
- * The rules that ship with the application. They are a simplified planning
- * model owned by this app and make no claim to any real building code.
- * They are evaluated by exactly the same engine as human authored rules.
+ * The rules that ship with the application. A simplified planning model owned
+ * by this app, making no claim to any real building code, and evaluated by the
+ * same engine as human authored rules.
  */
 export function builtinRules(): Rule[] {
   const mk = (
@@ -47,8 +47,8 @@ export function builtinRules(): Rule[] {
       {}
     ),
     mk("builtin.overlap", "No two objects may overlap.", "no_overlap", {}),
-    // Exit clearance is listed ahead of general clearance on purpose. When a
-    // placement breaks both, the exit is the more useful thing to tell a human.
+    // Ordered ahead of general clearance on purpose. When a placement breaks
+    // both, the exit is the more useful one to report.
     mk(
       "builtin.exit",
       "Keep a 2.0 m obstruction free radius around every exit.",
@@ -340,9 +340,8 @@ export function evaluateWorld(world: WorldState): Violation[] {
 }
 
 /**
- * Stable identity for a violation so that two evaluations can be compared.
- * Without this the tool boundary could not tell a pre-existing problem apart
- * from one the agent just introduced.
+ * Stable identity for a violation so two evaluations can be compared, which is
+ * how a pre-existing problem is told apart from a newly introduced one.
  */
 export function violationKey(v: Violation): string {
   return `${v.ruleId}::${[...v.objectIds].sort().join(",")}`;

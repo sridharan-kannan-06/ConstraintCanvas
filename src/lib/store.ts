@@ -82,7 +82,7 @@ function initialState(scenarioId = DEFAULT_SCENARIO_ID): AppState {
   };
 }
 
-/** How many steps back the human can go. Deep enough to cover a demo run. */
+/** How many steps back the undo stack holds. */
 const HISTORY_LIMIT = 40;
 
 let state: AppState = initialState();
@@ -142,14 +142,9 @@ export function setBridge(mode: BridgeMode, tools: string[]) {
 /* Undo. */
 
 /**
- * Records the state a mutation is about to replace.
- *
- * The floor and the pending proposal are captured together, so undoing an
- * approval brings back the proposal it resolved rather than leaving a change
- * with no explanation behind it. Rules are inside the world, so revoking or
- * ratifying one is undoable too.
- *
- * Call this immediately before mutating, never after.
+ * Records the state a mutation is about to replace. The floor and the pending
+ * proposal are captured together, so undoing an approval brings back the
+ * proposal it resolved. Call immediately before mutating, never after.
  */
 export function pushHistory(label: string) {
   const entry: HistoryEntry = {
@@ -199,8 +194,8 @@ export function addObjectByHuman(kind: ObjectKind, x: number, y: number) {
 
 /**
  * Marks the start of a drag. A drag fires a move on every pointer event, so
- * history is recorded once here rather than on each frame, and one undo puts
- * the object back where the drag began.
+ * history is recorded once here and one undo returns the object to where the
+ * drag began.
  */
 export function beginMove(id: string) {
   const target = state.world.objects.find((o) => o.id === id);
@@ -310,9 +305,8 @@ export function describeChange(c: ChangeOp, world: WorldState): string {
 
 /**
  * Validates a changeset and, if it survives, parks it as a pending preview.
- *
- * Nothing here mutates the floor. That is the whole point of the separation:
- * an agent can only ever reach a preview, and a human decides what lands.
+ * Nothing here mutates the floor. An agent can only reach a preview, and a
+ * human decides what lands.
  */
 export function submitProposal(
   changes: ChangeOp[],
@@ -337,8 +331,8 @@ export function submitProposal(
 
   const world = state.world;
 
-  // Locks are checked first and separately. A locked object is not a rule the
-  // human can be talked out of, it is a hard boundary on the tool surface.
+  // Locks are checked first and separately. A locked object is a hard
+  // boundary on the tool surface rather than a rule to be argued down.
   for (const c of changes) {
     if (c.op === "add") continue;
     const target = world.objects.find((o) => o.id === c.id);
@@ -477,9 +471,8 @@ export function acceptAll() {
 }
 
 /**
- * Rejecting an item does not simply discard it. It opens the rule capture flow,
- * which is the mechanism that turns a one off correction into a standing
- * constraint the tool boundary will enforce from then on.
+ * Rejecting an item does not discard it. It opens the rule capture flow, which
+ * turns a one off correction into a standing constraint.
  */
 export function rejectItem(itemId: string) {
   const pending = state.pending;
@@ -622,8 +615,8 @@ export function confirmCapture() {
 }
 
 /**
- * Opens the same confirmation flow a rejection opens, but from an instruction
- * the agent parsed. The agent can draft a rule. It cannot enact one.
+ * Opens the same confirmation flow a rejection opens, from an instruction the
+ * agent parsed. The agent can draft a rule but cannot enact one.
  */
 export function openRuleProposal(
   instruction: string,
@@ -708,14 +701,11 @@ export function currentViolations(): Violation[] {
   return evaluateWorld(state.world);
 }
 
-/**
- * Loads a scenario from scratch. History is not preserved across a load,
- * because undoing into a different floor would be meaningless.
- */
+/** Loads a scenario from scratch. Undo history does not survive a load. */
 export function loadScenarioById(id: string) {
   const scenario = SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0];
-  // The tool surface belongs to the page, not to the floor, so a scenario
-  // load must not blank out what the bridge already registered.
+  // The tool surface belongs to the page rather than the floor, so a scenario
+  // load must not clear what the bridge already registered.
   const bridge = state.bridge;
   state = { ...initialState(scenario.id), bridge };
   emit();
